@@ -10,7 +10,7 @@ Usage:
 Requirements:
     pip install numpy pandas scikit-learn trimesh open3d
 
-Author: AI Assistant
+Author: Theeradon
 Version: 1.0.0
 """
 
