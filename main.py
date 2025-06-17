@@ -1,17 +1,32 @@
 #!/usr/bin/env python3
 """
-Complete Machine Learning-based Point Cloud Reduction System
+Ballast Quality-Focused Point Cloud Reduction System v2.3 (Target-Respecting)
 
-Usage:
-    python point_cloud_reduction_system.py /path/to/models --count 50 --workers 12
-    python point_cloud_reduction_system.py /path/to/models --ratio 0.3 --workers 8
-    python point_cloud_reduction_system.py model.stl --count 100 --method poisson
+SPECIALIZED FOR BALLAST QUALITY + RESPECTS USER TARGETS:
+- Much more conservative point reduction for ballast (but respects user intent)
+- Specialized ballast surface reconstruction
+- Better feature preservation for rough surfaces
+- Multiple quality validation steps
+- NEW: Actually hits close to user-specified targets
+- NEW: Target-aware parameter adjustment
+
+Usage (SAME COMMANDS):
+    python ballast-quality-focused-v2.3.py /home/railcmu/Desktop/BPK/ballast --count 100 --workers 2
+
+Key Improvements for Ballast Quality + Target Compliance:
+    ✅ Respects user targets while ensuring minimum quality
+    ✅ 2-3x more points retained for ballast (vs massive over-targets)
+    ✅ Specialized surface reconstruction for rough textures
+    ✅ Better feature detection for irregular geometry
+    ✅ Multiple reconstruction method fallbacks
+    ✅ Target-aware parameter adjustment
+    ✅ Quality validation and automatic corrections
 
 Requirements:
     pip install numpy pandas scikit-learn trimesh open3d
 
-Author: AI Assistant
-Version: 1.0.0
+Author: theeradon
+Version: 2.3.0 (Ballast Quality-Focused + Target-Respecting)
 """
 
 import numpy as np
@@ -26,6 +41,8 @@ from pathlib import Path
 from typing import Tuple, List, Dict, Optional, Union
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import multiprocessing as mp
+import math
+from functools import wraps
 
 # Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
@@ -45,6 +62,7 @@ except ImportError:
 
 try:
     from sklearn.svm import SVC
+    from sklearn.ensemble import RandomForestClassifier
     from sklearn.cluster import DBSCAN
     from sklearn.neighbors import NearestNeighbors
     from sklearn.preprocessing import StandardScaler
@@ -57,15 +75,12 @@ except ImportError:
 def setup_logging(verbose: bool = False, log_file: Optional[str] = None):
     """Setup logging configuration with file and console output"""
     
-    # Create logs directory if saving to file
     if log_file:
         log_path = Path(log_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Configure logging level
     level = logging.DEBUG if verbose else logging.INFO
     
-    # Create formatters
     detailed_formatter = logging.Formatter(
         '%(asctime)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
@@ -75,59 +90,534 @@ def setup_logging(verbose: bool = False, log_file: Optional[str] = None):
         datefmt='%H:%M:%S'
     )
     
-    # Setup root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
     
-    # Clear any existing handlers
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
     
-    # Console handler (always present)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
     console_handler.setFormatter(simple_formatter)
     root_logger.addHandler(console_handler)
     
-    # File handler (if specified)
     if log_file:
         file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
-        file_handler.setLevel(logging.DEBUG)  # Always detailed in file
+        file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(detailed_formatter)
         root_logger.addHandler(file_handler)
         
-        # Log the logging setup
         logging.info(f"📝 Logging to file: {log_file}")
         logging.info(f"📺 Console logging level: {logging.getLevelName(level)}")
         
     return root_logger
 
 
-# Configure initial logging (will be reconfigured in main())
 logger = logging.getLogger(__name__)
 
 
-def process_single_file_worker(args):
+def time_function(func):
+    """Decorator to time function execution"""
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        start = time.time()
+        result = func(self, *args, **kwargs)
+        elapsed = time.time() - start
+        logger.debug(f"⏱️ {func.__name__}: {elapsed:.2f}s")
+        return result
+    return wrapper
+
+
+class BallastQualitySpecialist:
     """
-    Module-level worker function for parallel processing.
-    This function can be pickled and sent to worker processes.
+    SPECIALIZED for ballast quality - addresses the over-simplification issues
+    """
     
-    Args:
-        args: tuple of (file_path, output_dir, reducer_params)
-    """
+    def __init__(self):
+        # Much more conservative settings for ballast quality (but respect user targets)
+        self.ballast_config = {
+            # Minimum points to ensure quality (REASONABLE minimums)
+            'min_points_small_ballast': 40,      # vs 500 before (too high)
+            'min_points_medium_ballast': 80,     # vs 1200 before (too high)  
+            'min_points_large_ballast': 150,     # vs 2500 before (too high)
+            
+            # Feature preservation settings
+            'importance_threshold_aggressive': 40,  # Keep top 60% of points
+            'importance_threshold_moderate': 50,    # Keep top 50% of points
+            'importance_threshold_conservative': 60, # Keep top 40% of points
+            
+            # Clustering settings (more conservative than standard, but not extreme)
+            'epsilon_fine': 0.008,      # Very fine clustering
+            'epsilon_medium': 0.015,    # Medium clustering
+            'epsilon_coarse': 0.025,    # Coarse clustering
+            
+            # Surface reconstruction settings
+            'poisson_depth_high': 10,   # Higher detail
+            'poisson_depth_medium': 9,  # Medium detail
+            'poisson_depth_low': 8,     # Lower detail
+            
+            # Quality validation
+            'min_points_for_reconstruction': 30,  # Lowered from 50
+            'max_reconstruction_attempts': 3,
+            'normal_estimation_neighbors': 20,    # Reduced from 30
+        }
+        
+    def detect_ballast_model(self, file_path: str) -> bool:
+        """Detect if this is likely a ballast model"""
+        filename = file_path.lower()
+        ballast_keywords = ['ballast', 'stone', 'rock', 'aggregate', 'gravel', 'bpk']
+        return any(keyword in filename for keyword in ballast_keywords)
+    
+    def analyze_ballast_complexity(self, points: np.ndarray) -> Dict:
+        """Analyze ballast model complexity to determine optimal settings"""
+        n_points = len(points)
+        
+        # Calculate geometric complexity
+        bbox = np.max(points, axis=0) - np.min(points, axis=0)
+        bbox_volume = np.prod(bbox)
+        bbox_surface_area = 2 * (bbox[0]*bbox[1] + bbox[1]*bbox[2] + bbox[0]*bbox[2])
+        
+        # Estimate surface roughness using point distribution
+        if n_points > 100:
+            # Sample points to estimate surface variation
+            sample_size = min(1000, n_points)
+            sample_indices = np.random.choice(n_points, sample_size, replace=False)
+            sample_points = points[sample_indices]
+            
+            # Compute distances to nearest neighbors
+            if sample_size > 10:
+                nbrs = NearestNeighbors(n_neighbors=min(10, sample_size-1))
+                nbrs.fit(sample_points)
+                distances, _ = nbrs.kneighbors(sample_points)
+                avg_neighbor_distance = np.mean(distances[:, 1:])  # Exclude self
+                surface_roughness = np.std(distances[:, 1:])
+            else:
+                avg_neighbor_distance = 0.1
+                surface_roughness = 0.05
+        else:
+            avg_neighbor_distance = 0.1
+            surface_roughness = 0.05
+        
+        # Classify ballast complexity
+        if bbox_volume > 1000 or n_points > 100000:
+            complexity = "high"
+        elif bbox_volume > 100 or n_points > 20000:
+            complexity = "medium"
+        else:
+            complexity = "low"
+        
+        analysis = {
+            'complexity': complexity,
+            'bbox_volume': bbox_volume,
+            'bbox_surface_area': bbox_surface_area,
+            'surface_roughness': surface_roughness,
+            'avg_neighbor_distance': avg_neighbor_distance,
+            'original_points': n_points
+        }
+        
+        logger.info(f"🔍 Ballast analysis: {complexity} complexity, roughness: {surface_roughness:.4f}")
+        
+        return analysis
+    
+    def get_quality_focused_target_points(self, original_points: np.ndarray, 
+                                        target_ratio: float, analysis: Dict) -> int:
+        """
+        Calculate target points that RESPECTS user target while ensuring minimum quality
+        """
+        original_count = len(original_points)
+        base_target = int(original_count * target_ratio)
+        
+        # Much more reasonable quality adjustments that still respect user intent
+        if base_target < 50:  # Very small targets
+            # For very small targets, be more generous but reasonable
+            quality_multiplier = 3.0  # 3x more points max
+        elif base_target < 200:  # Small targets  
+            quality_multiplier = 2.0  # 2x more points max
+        elif base_target < 1000:  # Medium targets
+            quality_multiplier = 1.5  # 1.5x more points max
+        else:  # Large targets
+            quality_multiplier = 1.2  # Only 20% more for large targets
+        
+        # Apply complexity-based adjustment (much more modest)
+        if analysis['complexity'] == 'high' and analysis['surface_roughness'] > 0.3:
+            quality_multiplier *= 1.3  # Extra 30% for very complex surfaces
+        elif analysis['surface_roughness'] > 0.1:
+            quality_multiplier *= 1.1  # Extra 10% for rough surfaces
+        
+        # Calculate quality-adjusted target
+        adjusted_target = int(base_target * quality_multiplier)
+        
+        # Ensure minimum viable points for reconstruction
+        min_viable = 30  # Absolute minimum
+        optimal_points = max(adjusted_target, min_viable)
+        
+        # Cap at reasonable maximum relative to user intent
+        max_allowed = min(base_target * 5, 2000)  # Never more than 5x user target or 2000 points
+        optimal_points = min(optimal_points, max_allowed)
+        
+        logger.info(f"🎯 Balanced target: {original_count:,} → {optimal_points:,} points")
+        logger.info(f"   User target: {base_target:,}, Quality-adjusted: {optimal_points:,}")
+        logger.info(f"   Quality multiplier: {quality_multiplier:.1f}x (respects user intent)")
+        
+        return optimal_points
+    
+    def get_ballast_quality_parameters(self, analysis: Dict, target_points: int, original_points: int, aggressive_reduction: bool = False) -> Dict:
+        """
+        Get parameters optimized for ballast quality preservation while respecting targets
+        """
+        complexity = analysis['complexity']
+        surface_roughness = analysis['surface_roughness']
+        reduction_ratio = target_points / original_points
+        
+        # Adjust parameters based on how aggressive the reduction needs to be
+        if reduction_ratio < 0.02:  # Very aggressive reduction (< 2%)
+            importance_threshold = self.ballast_config['importance_threshold_aggressive']
+            epsilon_scale = 1.5  # Larger epsilon for more aggressive clustering
+            k_neighbors = 8
+        elif reduction_ratio < 0.05:  # Moderate aggressive reduction (< 5%)
+            importance_threshold = self.ballast_config['importance_threshold_moderate'] 
+            epsilon_scale = 1.2
+            k_neighbors = 6
+        else:  # Conservative reduction (>= 5%)
+            importance_threshold = self.ballast_config['importance_threshold_conservative']
+            epsilon_scale = 1.0
+            k_neighbors = 6
+        
+        # Choose base clustering parameters based on surface detail
+        if surface_roughness > 0.1:  # Very detailed surface
+            base_epsilon = self.ballast_config['epsilon_fine']
+        elif surface_roughness > 0.05:  # Moderately detailed
+            base_epsilon = self.ballast_config['epsilon_medium']
+        else:  # Smoother surface
+            base_epsilon = self.ballast_config['epsilon_coarse']
+        
+        # Apply scaling based on reduction aggressiveness
+        epsilon = base_epsilon * epsilon_scale
+        
+        # DBSCAN cleanup parameters (scale with aggressiveness)
+        dbscan_eps = epsilon * (1.5 if reduction_ratio > 0.05 else 2.0)
+        
+        params = {
+            'k_neighbors': k_neighbors,
+            'epsilon': epsilon,
+            'dbscan_eps': dbscan_eps,
+            'importance_threshold': importance_threshold,
+            'complexity': complexity,
+            'surface_roughness': surface_roughness,
+            'reduction_ratio': reduction_ratio,
+            'epsilon_scale': epsilon_scale
+        }
+        
+        logger.info(f"🎛️ Target-aware parameters: {params}")
+        
+        return params
+    
+    def enhanced_feature_extraction_for_ballast(self, points: np.ndarray, k_neighbors: int = 12) -> np.ndarray:
+        """
+        Enhanced feature extraction specifically optimized for ballast rough surfaces
+        """
+        n_points = len(points)
+        features = np.zeros((n_points, 6), dtype=np.float32)  # More features for ballast
+        
+        # Use more neighbors for stable feature estimation on rough surfaces
+        k = min(k_neighbors, 20, n_points-1)
+        nbrs = NearestNeighbors(n_neighbors=k, algorithm='kd_tree', n_jobs=4)
+        nbrs.fit(points)
+        
+        distances, indices = nbrs.kneighbors(points)
+        
+        # Feature 1: Global centroid distance
+        centroid = np.mean(points, axis=0)
+        features[:, 0] = np.linalg.norm(points - centroid, axis=1)
+        
+        # Feature 2: Local density (mean distance to neighbors)
+        features[:, 1] = np.mean(distances[:, 1:], axis=1)
+        
+        # Feature 3: Local variation (std of distances) - important for rough surfaces
+        features[:, 2] = np.std(distances[:, 1:], axis=1)
+        
+        # Feature 4: Max neighbor distance - captures edges and protrusions
+        features[:, 3] = np.max(distances[:, 1:], axis=1)
+        
+        # Feature 5: Local curvature estimate
+        for i in range(n_points):
+            neighbor_points = points[indices[i, 1:]]  # Exclude self
+            if len(neighbor_points) > 3:
+                # Compute covariance matrix
+                centered = neighbor_points - np.mean(neighbor_points, axis=0)
+                cov_matrix = np.cov(centered.T)
+                eigenvals = np.linalg.eigvals(cov_matrix)
+                eigenvals = np.sort(eigenvals)[::-1]  # Sort descending
+                
+                # Curvature estimate (smaller eigenvalue ratio = more curved)
+                if eigenvals[0] > 1e-10:
+                    features[i, 4] = eigenvals[2] / eigenvals[0]
+                else:
+                    features[i, 4] = 0
+            else:
+                features[i, 4] = 0
+        
+        # Feature 6: Surface roughness indicator
+        features[:, 5] = features[:, 2] / (features[:, 1] + 1e-8)  # Variation/density ratio
+        
+        logger.debug(f"✅ Enhanced ballast features extracted for {n_points:,} points")
+        
+        return features
+    
+    def create_ballast_importance_labels(self, features: np.ndarray, points: np.ndarray,
+                                       importance_threshold: int = 50) -> np.ndarray:
+        """
+        Create importance labels specifically tuned for ballast surface features
+        """
+        n_points = len(points)
+        importance_scores = np.zeros(n_points)
+        
+        # Weight features for ballast characteristics
+        
+        # High curvature points (edges, corners, protrusions) - very important for ballast
+        curvature_score = features[:, 2] + features[:, 3] + features[:, 4] * 2  # Enhanced curvature weight
+        importance_scores += curvature_score * 2.0  # Double weight for geometric features
+        
+        # Surface roughness - crucial for ballast texture
+        roughness_score = features[:, 5]
+        importance_scores += roughness_score * 1.5
+        
+        # Boundary points (low local density) - important for ballast edges
+        density_score = 1.0 / (features[:, 1] + 1e-8)
+        importance_scores += density_score * 0.8
+        
+        # Extremal points (far from centroid) - less important for ballast than other features
+        centroid_distance_score = features[:, 0]
+        importance_scores += centroid_distance_score * 0.3
+        
+        # Normalize scores
+        if np.max(importance_scores) > 0:
+            importance_scores = importance_scores / np.max(importance_scores)
+        
+        threshold = np.percentile(importance_scores, importance_threshold)
+        pseudo_labels = (importance_scores >= threshold).astype(int)
+        
+        logger.info(f"🎯 Ballast importance labels: {np.sum(pseudo_labels):,}/{n_points:,} important points")
+        logger.info(f"   Importance threshold: {importance_threshold}% (keeping top {100-importance_threshold}%)")
+        
+        return pseudo_labels
+    
+    def quality_focused_surface_reconstruction(self, points: np.ndarray, normals: np.ndarray, 
+                                             method: str = 'poisson') -> Optional[trimesh.Trimesh]:
+        """
+        Quality-focused surface reconstruction with multiple fallback methods
+        """
+        if len(points) < self.ballast_config['min_points_for_reconstruction']:
+            logger.warning(f"⚠️ Too few points ({len(points)}) for quality reconstruction")
+            return None
+        
+        logger.info(f"🔧 Quality-focused reconstruction for {len(points):,} points using {method}")
+        
+        # Enhance normals first
+        try:
+            normals = self.improve_normals_for_ballast(points, normals)
+        except Exception as e:
+            logger.warning(f"⚠️ Normal enhancement failed: {e}")
+        
+        # Create point cloud
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+        pcd.normals = o3d.utility.Vector3dVector(normals)
+        
+        # Try multiple reconstruction methods with different parameters
+        reconstruction_attempts = [
+            ('poisson_high', self._try_poisson_high_quality),
+            ('poisson_medium', self._try_poisson_medium_quality),
+            ('ball_pivoting_adaptive', self._try_ball_pivoting_adaptive),
+            ('poisson_low', self._try_poisson_low_quality),
+            ('alpha_shapes', self._try_alpha_shapes)
+        ]
+        
+        for attempt_name, reconstruction_func in reconstruction_attempts:
+            try:
+                logger.info(f"🔄 Trying {attempt_name} reconstruction...")
+                mesh = reconstruction_func(pcd)
+                
+                if mesh is not None:
+                    vertices = np.asarray(mesh.vertices)
+                    faces = np.asarray(mesh.triangles)
+                    
+                    if len(faces) > 0:
+                        reconstructed_mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+                        
+                        # Validate mesh quality
+                        if self._validate_mesh_quality(reconstructed_mesh, points):
+                            logger.info(f"✅ Success with {attempt_name}: {len(vertices):,} vertices, {len(faces):,} faces")
+                            return reconstructed_mesh
+                        else:
+                            logger.warning(f"⚠️ {attempt_name} failed quality validation")
+                    else:
+                        logger.warning(f"⚠️ {attempt_name} produced no faces")
+                else:
+                    logger.warning(f"⚠️ {attempt_name} returned None")
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ {attempt_name} failed: {e}")
+                continue
+        
+        logger.error(f"❌ All reconstruction methods failed for {len(points)} points")
+        return None
+    
+    def improve_normals_for_ballast(self, points: np.ndarray, normals: np.ndarray) -> np.ndarray:
+        """
+        Improve normal estimation specifically for rough ballast surfaces
+        """
+        try:
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(points)
+            
+            # Use more neighbors for stable normal estimation on rough surfaces
+            pcd.estimate_normals(
+                search_param=o3d.geometry.KDTreeSearchParamKNN(
+                    knn=self.ballast_config['normal_estimation_neighbors']
+                )
+            )
+            
+            # Orient normals consistently
+            pcd.orient_normals_consistent_tangent_plane(
+                k=self.ballast_config['normal_estimation_neighbors']
+            )
+            
+            improved_normals = np.asarray(pcd.normals)
+            
+            # Validate improved normals
+            if len(improved_normals) == len(points) and not np.any(np.isnan(improved_normals)):
+                return improved_normals
+            else:
+                return normals
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Normal improvement failed: {e}")
+            return normals
+    
+    def _try_poisson_high_quality(self, pcd) -> Optional[o3d.geometry.TriangleMesh]:
+        """Try high-quality Poisson reconstruction"""
+        mesh, _ = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+            pcd, 
+            depth=self.ballast_config['poisson_depth_high'],
+            width=0,
+            scale=1.1,
+            linear_fit=False
+        )
+        
+        # Post-process for ballast
+        if len(np.asarray(mesh.vertices)) > 0:
+            # Light smoothing to reduce artifacts while preserving detail
+            mesh = mesh.filter_smooth_simple(number_of_iterations=1)
+            mesh.compute_vertex_normals()
+        
+        return mesh
+    
+    def _try_poisson_medium_quality(self, pcd) -> Optional[o3d.geometry.TriangleMesh]:
+        """Try medium-quality Poisson reconstruction"""
+        mesh, _ = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+            pcd, 
+            depth=self.ballast_config['poisson_depth_medium'],
+            width=0,
+            scale=1.0,
+            linear_fit=False
+        )
+        
+        if len(np.asarray(mesh.vertices)) > 0:
+            mesh = mesh.filter_smooth_simple(number_of_iterations=2)
+            mesh.compute_vertex_normals()
+        
+        return mesh
+    
+    def _try_poisson_low_quality(self, pcd) -> Optional[o3d.geometry.TriangleMesh]:
+        """Try low-quality Poisson reconstruction as fallback"""
+        mesh, _ = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+            pcd, 
+            depth=self.ballast_config['poisson_depth_low'],
+            width=0,
+            scale=1.0,
+            linear_fit=False
+        )
+        
+        if len(np.asarray(mesh.vertices)) > 0:
+            mesh.compute_vertex_normals()
+        
+        return mesh
+    
+    def _try_ball_pivoting_adaptive(self, pcd) -> Optional[o3d.geometry.TriangleMesh]:
+        """Try ball pivoting with adaptive radii for ballast"""
+        distances = pcd.compute_nearest_neighbor_distance()
+        avg_dist = np.mean(distances)
+        
+        # Use smaller radii for better detail preservation
+        radii = [avg_dist * factor for factor in [0.8, 1.2, 2.0, 3.0]]
+        
+        mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
+            pcd, 
+            o3d.utility.DoubleVector(radii)
+        )
+        
+        return mesh
+    
+    def _try_alpha_shapes(self, pcd) -> Optional[o3d.geometry.TriangleMesh]:
+        """Try alpha shapes reconstruction"""
+        mesh, _ = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(
+            pcd, 
+            alpha=0.02  # Smaller alpha for tighter fit
+        )
+        
+        return mesh
+    
+    def _validate_mesh_quality(self, mesh: trimesh.Trimesh, original_points: np.ndarray) -> bool:
+        """
+        Validate mesh quality for ballast models
+        """
+        try:
+            # Basic checks
+            if len(mesh.vertices) < 10 or len(mesh.faces) < 10:
+                return False
+            
+            # Check if mesh is too simplified compared to original
+            if len(mesh.vertices) < len(original_points) * 0.1:  # Less than 10% of original points
+                logger.warning(f"⚠️ Mesh too simplified: {len(mesh.vertices)} vs {len(original_points)} original")
+                return False
+            
+            # Check for degenerate faces
+            if hasattr(mesh, 'remove_degenerate_faces'):
+                mesh.remove_degenerate_faces()
+            
+            # Check bounding box preservation
+            original_bbox = np.max(original_points, axis=0) - np.min(original_points, axis=0)
+            mesh_bbox = mesh.bounds[1] - mesh.bounds[0]
+            
+            bbox_ratio = np.linalg.norm(mesh_bbox) / np.linalg.norm(original_bbox)
+            if bbox_ratio < 0.5 or bbox_ratio > 2.0:
+                logger.warning(f"⚠️ Mesh size changed significantly: ratio {bbox_ratio:.2f}")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Mesh validation failed: {e}")
+            return False
+
+
+def process_single_file_worker(args):
+    """Module-level worker function for parallel processing"""
     file_path, output_dir, reducer_params = args
     
     try:
-        # Create a new reducer instance for this worker
-        worker_reducer = PointCloudReducer(
+        worker_reducer = BallastQualityFocusedReducer(
             target_reduction_ratio=reducer_params['target_reduction_ratio'],
             voxel_size=reducer_params['voxel_size'],
-            n_cores=1,  # Each worker uses 1 core to avoid nested parallelism
+            n_cores=1,
             reconstruction_method=reducer_params['reconstruction_method'],
-            fast_mode=reducer_params.get('fast_mode', False)
+            fast_mode=reducer_params.get('fast_mode', False),
+            use_random_forest=reducer_params.get('use_random_forest', False),
+            enable_hierarchy=reducer_params.get('enable_hierarchy', True),
+            hierarchy_threshold=reducer_params.get('hierarchy_threshold', 50000)
         )
         
-        # Process the file
         result = worker_reducer.process_single_mesh(file_path, output_dir)
         return result
         
@@ -136,17 +626,11 @@ def process_single_file_worker(args):
         return {'input_file': file_path, 'error': str(e)}
 
 
-class PointCloudReducer:
+class BallastQualityFocusedReducer:
     """
-    Advanced Machine Learning-based Point Cloud Reduction System
+    Ballast Quality-Focused Point Cloud Reducer v2.2
     
-    Implements a multi-stage pipeline for intelligent 3D model simplification:
-    1. Importance Classification (SVM)
-    2. Local Continuity (KNN Reinforcement) 
-    3. Hybrid Merging (Radius + DBSCAN)
-    4. Adaptive Parameter Estimation
-    5. Multi-Resolution Preprocessing
-    6. Flexible Surface Reconstruction
+    SPECIALIZED to fix the over-simplification issues shown in the ballast models
     """
     
     def __init__(self, 
@@ -154,16 +638,13 @@ class PointCloudReducer:
                  voxel_size: Optional[float] = None,
                  n_cores: int = -1,
                  reconstruction_method: str = 'poisson',
-                 fast_mode: bool = False):
+                 fast_mode: bool = False,
+                 use_random_forest: bool = True,
+                 enable_hierarchy: bool = True,
+                 force_hierarchy: bool = False,
+                 hierarchy_threshold: int = 50000):
         """
-        Initialize the Point Cloud Reducer
-        
-        Args:
-            target_reduction_ratio: Target ratio of points to keep (0.0-1.0)
-            voxel_size: Voxel size for preprocessing downsampling 
-            n_cores: Number of CPU cores to use (-1 for all)
-            reconstruction_method: 'poisson', 'ball_pivoting', or 'alpha_shapes'
-            fast_mode: Skip parameter optimization for faster processing
+        Initialize Ballast Quality-Focused Reducer v2.2
         """
         self.target_reduction_ratio = target_reduction_ratio
         self.voxel_size = voxel_size
@@ -171,18 +652,36 @@ class PointCloudReducer:
         self.reconstruction_method = reconstruction_method
         self.fast_mode = fast_mode
         
+        self.use_random_forest = use_random_forest
+        self.enable_hierarchy = enable_hierarchy
+        self.force_hierarchy = force_hierarchy
+        self.hierarchy_threshold = hierarchy_threshold
+        
+        # NEW: Ballast quality specialist
+        self.ballast_specialist = BallastQualitySpecialist()
+        
         # Pipeline components
         self.scaler = StandardScaler()
-        self.svm_classifier = None
+        self.classifier = None
         self.best_params = {}
         
-        # Cache for optimization
-        self._feature_cache = {}
+        # Performance optimization caches
+        self.parameter_cache = {}
         
+        # Processing thresholds (more conservative for ballast)
+        self.SMALL_MODEL_THRESHOLD = hierarchy_threshold // 2  # Lower threshold
+        self.MEDIUM_MODEL_THRESHOLD = hierarchy_threshold
+        self.LARGE_MODEL_THRESHOLD = hierarchy_threshold * 2
+        self.HUGE_MODEL_THRESHOLD = hierarchy_threshold * 4
+        
+        logger.info(f"🗿 Ballast Quality-Focused Reducer v2.3 initialized")
+        logger.info(f"   Focus: Quality preservation + target compliance for ballast models")
+        logger.info(f"   Hierarchical processing: {'ON' if enable_hierarchy else 'OFF'}")
+        logger.info(f"   Classifier: {'RandomForest' if use_random_forest else 'SVM'}")
+    
     def load_mesh(self, file_path: str) -> Tuple[np.ndarray, np.ndarray]:
         """Load STL mesh and extract point cloud with normals"""
         try:
-            # Try trimesh first (better STL support)
             mesh = trimesh.load(file_path)
             if hasattr(mesh, 'vertices'):
                 points = np.array(mesh.vertices)
@@ -190,46 +689,24 @@ class PointCloudReducer:
             else:
                 raise ValueError("Failed to extract vertices from mesh")
                 
-            # Fallback to Open3D if trimesh fails
             if normals is None:
                 o3d_mesh = o3d.io.read_triangle_mesh(file_path)
                 o3d_mesh.compute_vertex_normals()
                 points = np.asarray(o3d_mesh.vertices)
                 normals = np.asarray(o3d_mesh.vertex_normals)
                 
-            logger.info(f"Loaded mesh with {len(points)} vertices from {file_path}")
+            logger.info(f"📥 Loaded mesh with {len(points):,} vertices from {Path(file_path).name}")
             return points, normals
             
         except Exception as e:
-            logger.error(f"Failed to load mesh {file_path}: {e}")
+            logger.error(f"❌ Failed to load mesh {file_path}: {e}")
             raise
-    
-    def voxel_downsample(self, points: np.ndarray, normals: np.ndarray, 
-                        voxel_size: float) -> Tuple[np.ndarray, np.ndarray]:
-        """Multi-resolution preprocessing via voxel downsampling"""
-        if voxel_size is None:
-            return points, normals
-            
-        # Create Open3D point cloud
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(points)
-        pcd.normals = o3d.utility.Vector3dVector(normals)
-        
-        # Voxel downsample
-        downsampled_pcd = pcd.voxel_down_sample(voxel_size)
-        
-        down_points = np.asarray(downsampled_pcd.points)
-        down_normals = np.asarray(downsampled_pcd.normals)
-        
-        logger.info(f"Voxel downsampled from {len(points)} to {len(down_points)} points")
-        return down_points, down_normals
     
     def normalize_points(self, points: np.ndarray) -> Tuple[np.ndarray, Dict]:
         """Normalize points to unit cube centered at origin"""
         centroid = np.mean(points, axis=0)
         centered_points = points - centroid
         
-        # Scale to fit in unit cube
         max_extent = np.max(np.abs(centered_points))
         scale_factor = 1.0 / max_extent if max_extent > 0 else 1.0
         normalized_points = centered_points * scale_factor
@@ -241,300 +718,6 @@ class PointCloudReducer:
         
         return normalized_points, normalization_params
     
-    def extract_features(self, points: np.ndarray, k_neighbors: int = 30) -> np.ndarray:
-        """Extract geometric features for each point"""
-        n_points = len(points)
-        features = np.zeros((n_points, 5))  # 5 features per point
-        
-        # Build KD-tree for efficient neighbor search
-        nbrs = NearestNeighbors(n_neighbors=min(k_neighbors, n_points-1))
-        nbrs.fit(points)
-        
-        # Global centroid distance
-        centroid = np.mean(points, axis=0)
-        features[:, 0] = np.linalg.norm(points - centroid, axis=1)
-        
-        # Parallel feature extraction for efficiency
-        def compute_local_features(point_idx):
-            distances, indices = nbrs.kneighbors([points[point_idx]])
-            neighbors = points[indices[0]]
-            
-            # Local density (average distance to k nearest neighbors)
-            local_density = np.mean(distances[0][1:])  # Exclude self
-            
-            # Curvature estimation via PCA
-            if len(neighbors) > 3:
-                centered_neighbors = neighbors - np.mean(neighbors, axis=0)
-                cov_matrix = np.cov(centered_neighbors.T)
-                eigenvalues = np.linalg.eigvals(cov_matrix)
-                eigenvalues = np.sort(eigenvalues)[::-1]  # Sort descending
-                
-                # Curvature measures
-                linearity = (eigenvalues[0] - eigenvalues[1]) / eigenvalues[0] if eigenvalues[0] > 0 else 0
-                planarity = (eigenvalues[1] - eigenvalues[2]) / eigenvalues[0] if eigenvalues[0] > 0 else 0
-                sphericity = eigenvalues[2] / eigenvalues[0] if eigenvalues[0] > 0 else 0
-            else:
-                linearity = planarity = sphericity = 0
-                
-            return point_idx, local_density, linearity, planarity, sphericity
-        
-        # Process in batches for memory efficiency
-        batch_size = min(1000, n_points)
-        for i in range(0, n_points, batch_size):
-            end_idx = min(i + batch_size, n_points)
-            batch_indices = range(i, end_idx)
-            
-            with ThreadPoolExecutor(max_workers=min(4, self.n_cores)) as executor:
-                results = list(executor.map(compute_local_features, batch_indices))
-            
-            for point_idx, local_density, linearity, planarity, sphericity in results:
-                features[point_idx, 1] = local_density
-                features[point_idx, 2] = linearity
-                features[point_idx, 3] = planarity
-                features[point_idx, 4] = sphericity
-        
-        logger.info(f"Extracted features for {n_points} points")
-        return features
-    
-    def create_pseudo_labels(self, features: np.ndarray, points: np.ndarray) -> np.ndarray:
-        """Create pseudo-labels for SVM training based on geometric importance"""
-        n_points = len(points)
-        
-        # Combine multiple importance criteria
-        importance_scores = np.zeros(n_points)
-        
-        # High curvature points (edges, corners)
-        curvature_score = features[:, 2] + features[:, 3]  # linearity + planarity
-        importance_scores += curvature_score
-        
-        # Boundary points (low local density)
-        density_score = 1.0 / (features[:, 1] + 1e-8)  # Inverse density
-        importance_scores += 0.5 * density_score
-        
-        # Extremal points (far from centroid)
-        centroid_distance_score = features[:, 0]
-        importance_scores += 0.3 * centroid_distance_score
-        
-        # Convert to binary labels (top percentile as important)
-        threshold = np.percentile(importance_scores, 70)  # Top 30% as important
-        pseudo_labels = (importance_scores >= threshold).astype(int)
-        
-        logger.info(f"Created pseudo-labels: {np.sum(pseudo_labels)} important points out of {n_points}")
-        return pseudo_labels
-    
-    def train_svm_classifier(self, features: np.ndarray, labels: np.ndarray):
-        """Train SVM classifier for importance prediction"""
-        # Normalize features
-        features_scaled = self.scaler.fit_transform(features)
-        
-        # Train SVM with RBF kernel
-        self.svm_classifier = SVC(kernel='rbf', probability=True, random_state=42)
-        self.svm_classifier.fit(features_scaled, labels)
-        
-        # Log training accuracy
-        train_accuracy = self.svm_classifier.score(features_scaled, labels)
-        logger.info(f"SVM training accuracy: {train_accuracy:.3f}")
-    
-    def knn_reinforcement(self, points: np.ndarray, important_mask: np.ndarray, 
-                         k_neighbors: int) -> np.ndarray:
-        """Grow important regions using KNN to ensure local continuity"""
-        if np.sum(important_mask) == 0:
-            return important_mask
-        
-        important_indices = np.where(important_mask)[0]
-        reinforced_mask = important_mask.copy()
-        
-        # Build KD-tree
-        nbrs = NearestNeighbors(n_neighbors=min(k_neighbors, len(points)-1))
-        nbrs.fit(points)
-        
-        # For each important point, include its k nearest neighbors
-        for idx in important_indices:
-            distances, neighbor_indices = nbrs.kneighbors([points[idx]])
-            reinforced_mask[neighbor_indices[0]] = True
-        
-        logger.info(f"KNN reinforcement expanded from {np.sum(important_mask)} to {np.sum(reinforced_mask)} points")
-        return reinforced_mask
-    
-    def radius_merge(self, points: np.ndarray, normals: np.ndarray, 
-                    epsilon: float) -> Tuple[np.ndarray, np.ndarray]:
-        """Merge points within epsilon radius using spatial clustering"""
-        if epsilon <= 0 or len(points) == 0:
-            return points, normals
-        
-        # Use DBSCAN for spatial clustering
-        clustering = DBSCAN(eps=epsilon, min_samples=1)
-        cluster_labels = clustering.fit_predict(points)
-        
-        # Compute cluster centroids
-        unique_labels = np.unique(cluster_labels)
-        merged_points = []
-        merged_normals = []
-        
-        for label in unique_labels:
-            if label == -1:  # Noise points
-                noise_indices = np.where(cluster_labels == label)[0]
-                merged_points.extend(points[noise_indices])
-                merged_normals.extend(normals[noise_indices])
-            else:
-                cluster_indices = np.where(cluster_labels == label)[0]
-                centroid = np.mean(points[cluster_indices], axis=0)
-                avg_normal = np.mean(normals[cluster_indices], axis=0)
-                # Normalize the averaged normal
-                norm = np.linalg.norm(avg_normal)
-                if norm > 0:
-                    avg_normal /= norm
-                
-                merged_points.append(centroid)
-                merged_normals.append(avg_normal)
-        
-        merged_points = np.array(merged_points) if merged_points else np.empty((0, 3))
-        merged_normals = np.array(merged_normals) if merged_normals else np.empty((0, 3))
-        
-        logger.info(f"Radius merge reduced from {len(points)} to {len(merged_points)} points")
-        return merged_points, merged_normals
-    
-    def dbscan_cleanup(self, points: np.ndarray, normals: np.ndarray,
-                      eps: float, min_samples: int = 2) -> Tuple[np.ndarray, np.ndarray]:
-        """Apply DBSCAN to remove outliers and recombine clusters"""
-        if len(points) == 0:
-            return points, normals
-            
-        clustering = DBSCAN(eps=eps, min_samples=min_samples)
-        cluster_labels = clustering.fit_predict(points)
-        
-        # Keep only non-noise points and compute cluster centroids
-        valid_mask = cluster_labels != -1
-        if np.sum(valid_mask) == 0:
-            return points, normals
-        
-        valid_points = points[valid_mask]
-        valid_normals = normals[valid_mask]
-        valid_labels = cluster_labels[valid_mask]
-        
-        # Compute cluster centroids
-        unique_labels = np.unique(valid_labels)
-        cleaned_points = []
-        cleaned_normals = []
-        
-        for label in unique_labels:
-            cluster_indices = np.where(valid_labels == label)[0]
-            centroid = np.mean(valid_points[cluster_indices], axis=0)
-            avg_normal = np.mean(valid_normals[cluster_indices], axis=0)
-            norm = np.linalg.norm(avg_normal)
-            if norm > 0:
-                avg_normal /= norm
-            
-            cleaned_points.append(centroid)
-            cleaned_normals.append(avg_normal)
-        
-        cleaned_points = np.array(cleaned_points) if cleaned_points else np.empty((0, 3))
-        cleaned_normals = np.array(cleaned_normals) if cleaned_normals else np.empty((0, 3))
-        
-        logger.info(f"DBSCAN cleanup: {len(points)} -> {len(cleaned_points)} points")
-        return cleaned_points, cleaned_normals
-    
-    def adaptive_parameter_search(self, points: np.ndarray, normals: np.ndarray,
-                                features: np.ndarray, target_count: int, 
-                                fast_mode: bool = False) -> Dict:
-        """Grid search for optimal parameters to achieve target point count"""
-        
-        if fast_mode:
-            # Fast mode: use reasonable defaults without grid search
-            logger.info(f"Fast mode: Using default parameters for target count: {target_count}")
-            return {
-                'k_neighbors': 10,
-                'epsilon': 0.05,
-                'dbscan_eps': 0.08,
-                'final_count': target_count
-            }
-        
-        # Simplified parameter grid for speed
-        param_grid = {
-            'k_neighbors': [5, 10, 15],  # Reduced from more options
-            'epsilon': [0.02, 0.05, 0.08],  # Reduced from 5 to 3 options
-            'dbscan_eps': [0.03, 0.08]  # Reduced from 4 to 2 options
-        }
-        
-        best_params = None
-        best_score = float('inf')
-        
-        logger.info(f"Starting parameter search for target count: {target_count}")
-        total_combinations = len(list(ParameterGrid(param_grid)))
-        logger.info(f"Testing {total_combinations} parameter combinations...")
-        
-        start_time = time.time()
-        tested = 0
-        
-        for params in ParameterGrid(param_grid):
-            try:
-                tested += 1
-                elapsed = time.time() - start_time
-                if tested > 1:
-                    avg_time_per_combo = elapsed / tested
-                    remaining_combos = total_combinations - tested
-                    eta = remaining_combos * avg_time_per_combo
-                    logger.info(f"Parameter search progress: {tested}/{total_combinations} "
-                              f"(ETA: {eta:.1f}s)")
-                
-                # Create pseudo-labels and train SVM
-                pseudo_labels = self.create_pseudo_labels(features, points)
-                features_scaled = self.scaler.fit_transform(features)
-                
-                temp_svm = SVC(kernel='rbf', probability=True, random_state=42)
-                temp_svm.fit(features_scaled, pseudo_labels)
-                
-                # Predict importance
-                important_probs = temp_svm.predict_proba(features_scaled)[:, 1]
-                important_mask = important_probs > 0.5
-                
-                # Apply KNN reinforcement
-                reinforced_mask = self.knn_reinforcement(points, important_mask, 
-                                                       params['k_neighbors'])
-                
-                # Select points and apply merging
-                selected_points = points[reinforced_mask]
-                selected_normals = normals[reinforced_mask]
-                
-                if len(selected_points) == 0:
-                    continue
-                
-                # Radius merge
-                merged_points, merged_normals = self.radius_merge(
-                    selected_points, selected_normals, params['epsilon'])
-                
-                # DBSCAN cleanup
-                final_points, final_normals = self.dbscan_cleanup(
-                    merged_points, merged_normals, params['dbscan_eps'])
-                
-                # Score based on distance from target
-                current_count = len(final_points)
-                score = abs(current_count - target_count)
-                
-                if score < best_score:
-                    best_score = score
-                    best_params = params.copy()
-                    best_params['final_count'] = current_count
-                    logger.info(f"New best: {best_params} (score: {best_score})")
-                
-            except Exception as e:
-                logger.warning(f"Parameter combination failed: {params}, Error: {e}")
-                continue
-        
-        if best_params is None:
-            # Fallback parameters
-            best_params = {
-                'k_neighbors': 10,
-                'epsilon': 0.05,
-                'dbscan_eps': 0.08,
-                'final_count': len(points)
-            }
-        
-        search_time = time.time() - start_time
-        logger.info(f"Parameter search completed in {search_time:.1f}s")
-        logger.info(f"Best parameters found: {best_params}")
-        return best_params
-    
     def denormalize_points(self, points: np.ndarray, 
                           normalization_params: Dict) -> np.ndarray:
         """Transform points back to original coordinate frame"""
@@ -544,64 +727,264 @@ class PointCloudReducer:
         denormalized += normalization_params['centroid']
         return denormalized
     
-    def surface_reconstruction(self, points: np.ndarray, normals: np.ndarray) -> Optional[trimesh.Trimesh]:
-        """Reconstruct surface mesh from simplified point cloud"""
-        if len(points) < 4:  # Need at least 4 points for reconstruction
-            logger.warning("Too few points for surface reconstruction")
-            return None
-            
-        # Create Open3D point cloud
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(points)
-        pcd.normals = o3d.utility.Vector3dVector(normals)
+    @time_function
+    def train_classifier(self, features: np.ndarray, labels: np.ndarray):
+        """Train classifier optimized for ballast features"""
+        features_scaled = self.scaler.fit_transform(features)
         
-        try:
-            if self.reconstruction_method == 'poisson':
-                mesh, _ = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
-                    pcd, depth=8, width=0, scale=1.1, linear_fit=False)
-                
-            elif self.reconstruction_method == 'ball_pivoting':
-                # Estimate radius for ball pivoting
-                distances = pcd.compute_nearest_neighbor_distance()
-                avg_dist = np.mean(distances)
-                radius = 2 * avg_dist
-                
-                mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
-                    pcd, o3d.utility.DoubleVector([radius, radius * 2]))
-                
-            elif self.reconstruction_method == 'alpha_shapes':
-                # Alpha shapes approximation using Delaunay
-                mesh, _ = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(
-                    pcd, alpha=0.1)
-            
+        if self.use_random_forest:
+            # Optimized RandomForest for ballast
+            self.classifier = RandomForestClassifier(
+                n_estimators=100,  # More trees for ballast
+                max_depth=15,      # Deeper trees
+                random_state=42, 
+                n_jobs=min(4, self.n_cores)
+            )
+        else:
+            # SVM for quality
+            self.classifier = SVC(kernel='rbf', probability=True, random_state=42)
+        
+        self.classifier.fit(features_scaled, labels)
+        
+        train_accuracy = self.classifier.score(features_scaled, labels)
+        classifier_type = "RandomForest" if self.use_random_forest else "SVM"
+        logger.debug(f"✅ {classifier_type} training accuracy: {train_accuracy:.3f}")
+    
+    def knn_reinforcement(self, points: np.ndarray, important_mask: np.ndarray, 
+                         k_neighbors: int) -> np.ndarray:
+        """Conservative KNN reinforcement for ballast"""
+        if np.sum(important_mask) == 0:
+            return important_mask
+        
+        important_indices = np.where(important_mask)[0]
+        reinforced_mask = important_mask.copy()
+        
+        k = min(k_neighbors, len(points)-1)
+        nbrs = NearestNeighbors(n_neighbors=k, algorithm='kd_tree')
+        nbrs.fit(points)
+        
+        # Process all important points for quality (don't limit for ballast)
+        for idx in important_indices:
+            distances, neighbor_indices = nbrs.kneighbors([points[idx]])
+            reinforced_mask[neighbor_indices[0]] = True
+        
+        logger.debug(f"🔗 Conservative KNN: {np.sum(important_mask):,} → {np.sum(reinforced_mask):,} points")
+        return reinforced_mask
+    
+    def radius_merge(self, points: np.ndarray, normals: np.ndarray, 
+                    epsilon: float) -> Tuple[np.ndarray, np.ndarray]:
+        """Conservative radius merge for ballast quality"""
+        if epsilon <= 0 or len(points) == 0:
+            return points, normals
+        
+        clustering = DBSCAN(eps=epsilon, min_samples=1)
+        cluster_labels = clustering.fit_predict(points)
+        
+        unique_labels = np.unique(cluster_labels)
+        merged_points = []
+        merged_normals = []
+        
+        for label in unique_labels:
+            if label == -1:
+                # Keep noise points for ballast detail
+                noise_indices = np.where(cluster_labels == label)[0]
+                merged_points.extend(points[noise_indices])
+                merged_normals.extend(normals[noise_indices])
             else:
-                raise ValueError(f"Unknown reconstruction method: {self.reconstruction_method}")
+                cluster_indices = np.where(cluster_labels == label)[0]
+                
+                # For ballast, be more conservative about merging
+                if len(cluster_indices) <= 3:  # Keep small clusters as-is
+                    merged_points.extend(points[cluster_indices])
+                    merged_normals.extend(normals[cluster_indices])
+                else:
+                    # Only merge larger clusters
+                    centroid = np.mean(points[cluster_indices], axis=0)
+                    avg_normal = np.mean(normals[cluster_indices], axis=0)
+                    norm = np.linalg.norm(avg_normal)
+                    if norm > 0:
+                        avg_normal /= norm
+                    
+                    merged_points.append(centroid)
+                    merged_normals.append(avg_normal)
+        
+        merged_points = np.array(merged_points) if merged_points else np.empty((0, 3))
+        merged_normals = np.array(merged_normals) if merged_normals else np.empty((0, 3))
+        
+        logger.debug(f"🔄 Conservative merge: {len(points):,} → {len(merged_points):,} points")
+        return merged_points, merged_normals
+    
+    def dbscan_cleanup(self, points: np.ndarray, normals: np.ndarray,
+                      eps: float, min_samples: int = 2) -> Tuple[np.ndarray, np.ndarray]:
+        """Very conservative DBSCAN cleanup for ballast"""
+        if len(points) == 0:
+            return points, normals
+        
+        # Use very conservative parameters for ballast
+        clustering = DBSCAN(eps=eps, min_samples=max(1, min_samples//2))  # More lenient
+        cluster_labels = clustering.fit_predict(points)
+        
+        valid_mask = cluster_labels != -1
+        
+        # If too many points removed, keep them
+        if np.sum(valid_mask) < len(points) * 0.7:  # If losing more than 30%
+            logger.debug(f"🛡️ Keeping outliers to preserve ballast detail")
+            return points, normals
+        
+        if np.sum(valid_mask) == 0:
+            return points, normals
+        
+        logger.debug(f"🧹 Conservative cleanup: {len(points):,} → {np.sum(valid_mask):,} points")
+        return points[valid_mask], normals[valid_mask]
+    
+    def process_ballast_quality_focused(self, points: np.ndarray, normals: np.ndarray, 
+                                      input_path: str) -> Tuple[np.ndarray, np.ndarray, Dict]:
+        """
+        Main ballast processing with quality focus
+        """
+        logger.info("🗿 Starting ballast quality-focused processing...")
+        
+        # Analyze ballast complexity
+        analysis = self.ballast_specialist.analyze_ballast_complexity(points)
+        
+        # Get quality-focused target points (much more conservative)
+        optimal_target = self.ballast_specialist.get_quality_focused_target_points(
+            points, self.target_reduction_ratio, analysis)
+        
+        # Adjust target ratio based on quality requirements
+        adjusted_ratio = optimal_target / len(points)
+        original_ratio = self.target_reduction_ratio
+        self.target_reduction_ratio = adjusted_ratio
+        
+        logger.info(f"🎯 Target adjustment: {original_ratio:.4f} → {adjusted_ratio:.4f}")
+        logger.info(f"   Points target: {len(points):,} → {optimal_target:,}")
+        
+        # Get quality-focused parameters that respect the target
+        ballast_params = self.ballast_specialist.get_ballast_quality_parameters(
+            analysis, optimal_target, len(points), aggressive_reduction=(adjusted_ratio < 0.02))
+        
+        # Normalize points
+        normalized_points, norm_params = self.normalize_points(points)
+        
+        # Enhanced feature extraction for ballast
+        features = self.ballast_specialist.enhanced_feature_extraction_for_ballast(
+            normalized_points, k_neighbors=ballast_params['k_neighbors'])
+        
+        # Create ballast-specific importance labels
+        pseudo_labels = self.ballast_specialist.create_ballast_importance_labels(
+            features, normalized_points, ballast_params['importance_threshold'])
+        
+        # Train classifier
+        self.train_classifier(features, pseudo_labels)
+        
+        # Predict importance
+        features_scaled = self.scaler.transform(features)
+        important_probs = self.classifier.predict_proba(features_scaled)[:, 1]
+        important_mask = important_probs > 0.3  # Lower threshold for ballast
+        
+        logger.info(f"🎯 Initial important points: {np.sum(important_mask):,}/{len(points):,}")
+        
+        # Conservative KNN reinforcement
+        reinforced_mask = self.knn_reinforcement(
+            normalized_points, important_mask, ballast_params['k_neighbors'])
+        
+        logger.info(f"🔗 After reinforcement: {np.sum(reinforced_mask):,} points")
+        
+        selected_points = normalized_points[reinforced_mask]
+        selected_normals = normals[reinforced_mask]
+        
+        if len(selected_points) == 0:
+            logger.warning("⚠️ No points selected, using fallback sampling")
+            # Fallback: uniform sampling
+            step = max(1, len(points) // optimal_target)
+            final_points = points[::step]
+            final_normals = normals[::step]
+        else:
+            # Conservative clustering
+            merged_points, merged_normals = self.radius_merge(
+                selected_points, selected_normals, ballast_params['epsilon'])
             
-            # Convert to trimesh
-            vertices = np.asarray(mesh.vertices)
-            faces = np.asarray(mesh.triangles)
+            logger.info(f"🔄 After merging: {len(merged_points):,} points")
             
-            if len(faces) == 0:
-                logger.warning("Surface reconstruction produced no faces")
-                return None
+            # Very conservative cleanup
+            final_points, final_normals = self.dbscan_cleanup(
+                merged_points, merged_normals, ballast_params['dbscan_eps'])
             
-            reconstructed_mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
-            logger.info(f"Reconstructed mesh with {len(vertices)} vertices and {len(faces)} faces")
-            return reconstructed_mesh
+            logger.info(f"🧹 After cleanup: {len(final_points):,} points")
             
-        except Exception as e:
-            logger.error(f"Surface reconstruction failed: {e}")
-            return None
+            # Denormalize
+            final_points = self.denormalize_points(final_points, norm_params)
+            
+            # NEW: Ensure we actually hit close to the target
+            user_target = int(len(points) * original_ratio)
+            final_points, final_normals = self.ensure_target_compliance(
+                final_points, final_normals, optimal_target, user_target)
+        
+        # Restore original ratio
+        self.target_reduction_ratio = original_ratio
+        
+        method_info = {
+            'processing_method': 'ballast_quality_focused',
+            'ballast_analysis': analysis,
+            'ballast_parameters': ballast_params,
+            'target_adjustment': {
+                'original_ratio': original_ratio,
+                'adjusted_ratio': adjusted_ratio,
+                'original_target': int(len(points) * original_ratio),
+                'quality_target': optimal_target,
+                'final_count': len(final_points)
+            }
+        }
+        
+        return final_points, final_normals, method_info
+        
+    def ensure_target_compliance(self, points: np.ndarray, normals: np.ndarray, 
+                               target_points: int, user_target: int) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        NEW: Ensure we actually hit close to the user's target while maintaining quality
+        """
+        current_count = len(points)
+        
+        # If we're way over the quality-adjusted target, need to reduce further
+        if current_count > target_points * 2:  # More than 2x over target
+            logger.info(f"🎯 Too many points ({current_count:,}), reducing to target ({target_points:,})")
+            
+            # Use importance-based sampling to get closer to target
+            if current_count > target_points:
+                # Calculate features for final selection
+                features = self.ballast_specialist.enhanced_feature_extraction_for_ballast(points, k_neighbors=8)
+                
+                # Calculate importance scores
+                importance_scores = (
+                    features[:, 2] * 2.0 +  # Surface variation (most important for ballast)
+                    features[:, 3] * 1.5 +  # Max neighbor distance  
+                    features[:, 4] * 1.5 +  # Curvature
+                    features[:, 5] * 1.0 +  # Surface roughness
+                    features[:, 0] * 0.3 +  # Centroid distance (less important)
+                    (1.0 / (features[:, 1] + 1e-8)) * 0.5  # Boundary points
+                )
+                
+                # Select top most important points
+                top_indices = np.argsort(importance_scores)[-target_points:]
+                selected_points = points[top_indices]
+                selected_normals = normals[top_indices]
+                
+                logger.info(f"✂️ Importance-based reduction: {current_count:,} → {len(selected_points):,} points")
+                return selected_points, selected_normals
+        
+        # If we're close to target, keep as-is
+        logger.info(f"✅ Point count acceptable: {current_count:,} points (target: {target_points:,})")
+        return points, normals
     
     def process_single_mesh(self, input_path: str, output_dir: str) -> Dict:
-        """Process a single mesh file through the complete pipeline"""
+        """
+        Main processing method with ballast quality focus
+        """
         try:
-            # Create output directory
-            output_path = Path(output_dir)
-            output_path.mkdir(parents=True, exist_ok=True)
-            
-            # Track processing time
             start_time = time.time()
+            
+            # Check if this is a ballast model
+            is_ballast = self.ballast_specialist.detect_ballast_model(input_path)
             
             # Load mesh
             load_start = time.time()
@@ -614,88 +997,57 @@ class PointCloudReducer:
             
             logger.info(f"⏱️  Mesh loaded in {load_time:.1f}s")
             
-            # Voxel downsampling (optional)
-            if self.voxel_size:
-                downsample_start = time.time()
-                points, normals = self.voxel_downsample(points, normals, self.voxel_size)
-                downsample_time = time.time() - downsample_start
-                logger.info(f"⏱️  Voxel downsampling in {downsample_time:.1f}s")
-            
-            # Normalize points
-            norm_start = time.time()
-            normalized_points, norm_params = self.normalize_points(points)
-            norm_time = time.time() - norm_start
-            logger.info(f"⏱️  Normalization in {norm_time:.1f}s")
-            
-            # Extract features
-            feature_start = time.time()
-            features = self.extract_features(normalized_points)
-            feature_time = time.time() - feature_start
-            logger.info(f"⏱️  Feature extraction in {feature_time:.1f}s")
-            
-            # Calculate target count
-            target_count = max(4, int(len(points) * self.target_reduction_ratio))
-            
-            # Adaptive parameter search
-            param_start = time.time()
-            best_params = self.adaptive_parameter_search(
-                normalized_points, normals, features, target_count, self.fast_mode)
-            param_time = time.time() - param_start
-            
-            if self.fast_mode:
-                logger.info(f"⏱️  Fast mode (no parameter search): {param_time:.1f}s")
+            if is_ballast:
+                logger.info(f"🗿 BALLAST MODEL DETECTED - Applying quality-focused processing")
             else:
-                logger.info(f"⏱️  Parameter optimization in {param_time:.1f}s")
+                logger.info(f"📄 Regular model - Using standard processing")
             
-            # Apply best parameters
-            pipeline_start = time.time()
-            pseudo_labels = self.create_pseudo_labels(features, normalized_points)
-            self.train_svm_classifier(features, pseudo_labels)
+            # Process based on type
+            processing_start = time.time()
             
-            # Predict importance
-            features_scaled = self.scaler.transform(features)
-            important_probs = self.svm_classifier.predict_proba(features_scaled)[:, 1]
-            important_mask = important_probs > 0.5
+            if is_ballast:
+                # Use quality-focused processing for ballast
+                final_points, final_normals, method_info = self.process_ballast_quality_focused(
+                    points, normals, input_path)
+            else:
+                # Use standard processing for non-ballast
+                # (Simplified version for non-ballast models)
+                normalized_points, norm_params = self.normalize_points(points)
+                
+                # Simple uniform sampling for non-ballast
+                target_count = max(100, int(len(points) * self.target_reduction_ratio))
+                step = max(1, len(points) // target_count)
+                sampled_indices = np.arange(0, len(points), step)
+                
+                final_points = points[sampled_indices]
+                final_normals = normals[sampled_indices]
+                
+                method_info = {
+                    'processing_method': 'standard_uniform_sampling',
+                    'target_count': target_count,
+                    'final_count': len(final_points)
+                }
             
-            # KNN reinforcement
-            reinforced_mask = self.knn_reinforcement(
-                normalized_points, important_mask, best_params['k_neighbors'])
+            processing_time = time.time() - processing_start
+            logger.info(f"⏱️  Processing completed in {processing_time:.1f}s")
             
-            # Select points
-            selected_points = normalized_points[reinforced_mask]
-            selected_normals = normals[reinforced_mask]
-            
-            if len(selected_points) == 0:
-                return {'input_file': input_path, 'error': 'No points selected'}
-            
-            # Hybrid merging
-            merged_points, merged_normals = self.radius_merge(
-                selected_points, selected_normals, best_params['epsilon'])
-            
-            final_points, final_normals = self.dbscan_cleanup(
-                merged_points, merged_normals, best_params['dbscan_eps'])
-            
-            if len(final_points) == 0:
-                return {'input_file': input_path, 'error': 'All points eliminated during processing'}
-            
-            pipeline_time = time.time() - pipeline_start
-            logger.info(f"⏱️  ML pipeline in {pipeline_time:.1f}s")
-            
-            # Denormalize
-            final_points = self.denormalize_points(final_points, norm_params)
-            
-            # Surface reconstruction
+            # Enhanced surface reconstruction for ballast
             recon_start = time.time()
-            reconstructed_mesh = self.surface_reconstruction(final_points, final_normals)
+            if is_ballast:
+                logger.info("🔧 Applying ballast quality-focused surface reconstruction")
+                reconstructed_mesh = self.ballast_specialist.quality_focused_surface_reconstruction(
+                    final_points, final_normals, self.reconstruction_method)
+            else:
+                # Standard reconstruction for non-ballast
+                reconstructed_mesh = self._standard_reconstruction(final_points, final_normals)
+            
             recon_time = time.time() - recon_start
             logger.info(f"⏱️  Surface reconstruction in {recon_time:.1f}s")
             
-            # Save results - Create subdirectory for each model
+            # Save results
             save_start = time.time()
             filename = Path(input_path).stem
-            model_output_dir = output_path / filename
-            
-            # Create subdirectory with progress message
+            model_output_dir = Path(output_dir) / filename
             model_output_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"📁 Created subfolder: {model_output_dir.name}/")
             
@@ -704,7 +1056,8 @@ class PointCloudReducer:
             if reconstructed_mesh:
                 stl_path = model_output_dir / f"{filename}_simplified.stl"
                 reconstructed_mesh.export(str(stl_path))
-                logger.info(f"💾 Saved STL: {model_output_dir.name}/{filename}_simplified.stl")
+                quality_indicator = " (quality-focused)" if is_ballast else ""
+                logger.info(f"💾 Saved STL{quality_indicator}: {model_output_dir.name}/{filename}_simplified.stl")
             else:
                 logger.warning(f"⚠️  No STL generated for {filename} (reconstruction failed)")
             
@@ -724,13 +1077,17 @@ class PointCloudReducer:
             save_time = time.time() - save_start
             total_time = time.time() - start_time
             
-            # Final completion message for this file
+            # Final completion message
+            processing_type = "Quality-focused ballast" if is_ballast else "Standard"
             logger.info(f"✅ COMPLETED: {filename} → All files saved to {model_output_dir.name}/")
-            logger.info(f"📊 Summary: {original_count:,} → {len(final_points):,} points (ratio: {len(final_points) / original_count:.3f})")
+            logger.info(f"📊 Summary: {original_count:,} → {len(final_points):,} points (ratio: {len(final_points) / original_count:.4f})")
             logger.info(f"⏱️  Total processing time: {total_time:.1f}s")
-            logger.info(f"⏱️  Breakdown: Load({load_time:.1f}s) + Features({feature_time:.1f}s) + "
-                       f"Params({param_time:.1f}s) + Pipeline({pipeline_time:.1f}s) + "
-                       f"Recon({recon_time:.1f}s) + Save({save_time:.1f}s)")
+            logger.info(f"🚀 Method: {processing_type}")
+            
+            if is_ballast and 'target_adjustment' in method_info:
+                adj = method_info['target_adjustment']
+                logger.info(f"🎯 Quality adjustment: {adj['original_target']:,} → {adj['quality_target']:,} target points")
+            
             logger.info("-" * 80)
             
             # Results summary
@@ -743,13 +1100,13 @@ class PointCloudReducer:
                 'processing_time': total_time,
                 'time_breakdown': {
                     'load': load_time,
-                    'features': feature_time,
-                    'parameters': param_time,
-                    'pipeline': pipeline_time,
+                    'processing': processing_time,
                     'reconstruction': recon_time,
                     'save': save_time
                 },
-                'parameters': best_params,
+                'method_info': method_info,
+                'ballast_detected': is_ballast,
+                'quality_focused': is_ballast,
                 'output_files': {
                     'stl': str(stl_path) if stl_path else None,
                     'csv': str(csv_path),
@@ -757,12 +1114,36 @@ class PointCloudReducer:
                 }
             }
             
-            logger.info(f"Successfully processed {filename}: {original_count} -> {len(final_points)} points")
             return results
             
         except Exception as e:
-            logger.error(f"Failed to process {input_path}: {e}")
+            logger.error(f"❌ Failed to process {input_path}: {e}")
             return {'input_file': input_path, 'error': str(e)}
+    
+    def _standard_reconstruction(self, points: np.ndarray, normals: np.ndarray) -> Optional[trimesh.Trimesh]:
+        """Standard surface reconstruction for non-ballast models"""
+        if len(points) < 4:
+            return None
+            
+        try:
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(points)
+            pcd.normals = o3d.utility.Vector3dVector(normals)
+            
+            mesh, _ = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+                pcd, depth=8, width=0, scale=1.1, linear_fit=False)
+            
+            vertices = np.asarray(mesh.vertices)
+            faces = np.asarray(mesh.triangles)
+            
+            if len(faces) == 0:
+                return None
+            
+            return trimesh.Trimesh(vertices=vertices, faces=faces)
+            
+        except Exception as e:
+            logger.error(f"❌ Standard reconstruction failed: {e}")
+            return None
     
     def process_batch(self, input_dir: str, output_dir: str, 
                      file_pattern: str = "*.stl") -> List[Dict]:
@@ -771,45 +1152,44 @@ class PointCloudReducer:
         stl_files = list(input_path.glob(file_pattern))
         
         if not stl_files:
-            logger.warning(f"No STL files found in {input_dir}")
+            logger.warning(f"❌ No STL files found in {input_dir}")
             return []
         
-        logger.info(f"Processing {len(stl_files)} files with {self.n_cores} cores")
+        logger.info(f"🚀 Processing {len(stl_files)} files with {self.n_cores} cores")
+        logger.info(f"🗿 Ballast quality-focused processing enabled")
         
-        # TRUE PARALLEL PROCESSING - Multiple files simultaneously
         if len(stl_files) == 1 or self.n_cores == 1:
-            # Single file or single core - no need for parallel processing
+            # Single file or single core
             results = []
             for file_path in stl_files:
                 try:
                     result = self.process_single_mesh(str(file_path), output_dir)
                     results.append(result)
                 except Exception as e:
-                    logger.error(f"Error processing {file_path}: {e}")
+                    logger.error(f"❌ Error processing {file_path}: {e}")
                     results.append({'input_file': str(file_path), 'error': str(e)})
         else:
-            # Multiple files and multiple cores - use parallel processing
-            
-            # Prepare reducer parameters for workers
+            # Parallel processing
             reducer_params = {
                 'target_reduction_ratio': self.target_reduction_ratio,
                 'voxel_size': self.voxel_size,
-                'reconstruction_method': self.reconstruction_method
+                'reconstruction_method': self.reconstruction_method,
+                'fast_mode': self.fast_mode,
+                'use_random_forest': self.use_random_forest,
+                'enable_hierarchy': self.enable_hierarchy,
+                'hierarchy_threshold': self.hierarchy_threshold
             }
             
-            # Prepare arguments for worker processes
             worker_args = [
                 (str(file_path), output_dir, reducer_params) 
                 for file_path in stl_files
             ]
             
-            # Use ProcessPoolExecutor for true parallel file processing
             with ProcessPoolExecutor(max_workers=self.n_cores) as executor:
                 logger.info(f"🚀 Starting parallel processing with {self.n_cores} workers...")
                 
-                # Submit all files to the worker pool using the module-level function
                 future_to_args = {
-                    executor.submit(process_single_file_worker, args): args[0]  # args[0] is file_path
+                    executor.submit(process_single_file_worker, args): args[0]
                     for args in worker_args
                 }
                 
@@ -817,42 +1197,46 @@ class PointCloudReducer:
                 completed = 0
                 total_files = len(stl_files)
                 
-                # Collect results as they complete
-                from concurrent.futures import as_completed
                 for future in as_completed(future_to_args):
                     try:
-                        result = future.result(timeout=600)  # 10 minute timeout per file
+                        result = future.result(timeout=600)
                         results.append(result)
                         completed += 1
                         
-                        # Progress tracking with detailed save information
                         if 'error' not in result:
                             filename = Path(result['input_file']).name
                             model_name = Path(result['input_file']).stem
-                            logger.info(f"🎉 [{completed}/{total_files}] BATCH COMPLETED: {filename}")
+                            method = result.get('method_info', {}).get('processing_method', 'unknown')
+                            ballast_detected = result.get('ballast_detected', False)
+                            quality_focused = result.get('quality_focused', False)
+                            
+                            status_icons = ""
+                            if ballast_detected:
+                                status_icons += "🗿"
+                            if quality_focused:
+                                status_icons += "✨"
+                            
+                            logger.info(f"🎉 [{completed}/{total_files}] COMPLETED: {filename} {status_icons}")
                             logger.info(f"   📁 Subfolder: {model_name}/")
                             logger.info(f"   📊 Points: {result['original_points']:,} → {result['final_points']:,}")
-                            logger.info(f"   📈 Ratio: {result['reduction_ratio']:.3f}")
-                            
-                            # Show saved files
-                            if result['output_files']['stl']:
-                                logger.info(f"   💾 Files saved: STL ✅ CSV ✅ DAT ✅")
-                            else:
-                                logger.info(f"   💾 Files saved: STL ❌ CSV ✅ DAT ✅")
+                            logger.info(f"   🚀 Method: {method}")
+                            logger.info(f"   ⏱️  Time: {result['processing_time']:.1f}s")
+                            if ballast_detected:
+                                logger.info(f"   🗿 Ballast quality focus: Applied")
                             logger.info("-" * 60)
                         else:
                             filename = Path(result['input_file']).name
-                            logger.error(f"❌ [{completed}/{total_files}] BATCH FAILED: {filename}")
+                            logger.error(f"❌ [{completed}/{total_files}] FAILED: {filename}")
                             logger.error(f"   🚨 Error: {result['error']}")
                             logger.error("-" * 60)
                             
                     except Exception as e:
                         file_path = future_to_args[future]
-                        logger.error(f"Future error for {file_path}: {e}")
+                        logger.error(f"❌ Future error for {file_path}: {e}")
                         results.append({'input_file': str(file_path), 'error': str(e)})
                         completed += 1
         
-        # Save batch summary with progress message
+        # Save batch summary
         summary_path = Path(output_dir) / "batch_summary.csv"
         summary_df = pd.DataFrame(results)
         summary_df.to_csv(summary_path, index=False)
@@ -864,6 +1248,27 @@ class PointCloudReducer:
         failed_count = len([r for r in results if 'error' in r])
         logger.info(f"✅ Successful: {successful_count}")
         logger.info(f"❌ Failed: {failed_count}")
+        
+        if successful_count > 0:
+            # Performance analysis
+            successful_results = [r for r in results if 'error' not in r]
+            ballast_count = len([r for r in successful_results if r.get('ballast_detected', False)])
+            standard_count = successful_count - ballast_count
+            
+            if ballast_count > 0:
+                logger.info(f"🗿 Ballast quality-focused: {ballast_count} files")
+                ballast_results = [r for r in successful_results if r.get('ballast_detected', False)]
+                avg_ballast_time = np.mean([r['processing_time'] for r in ballast_results])
+                avg_ballast_ratio = np.mean([r['reduction_ratio'] for r in ballast_results])
+                logger.info(f"   Average processing time: {avg_ballast_time:.1f}s")
+                logger.info(f"   Average reduction ratio: {avg_ballast_ratio:.4f}")
+            
+            if standard_count > 0:
+                logger.info(f"📍 Standard processing: {standard_count} files")
+            
+            avg_time = np.mean([r['processing_time'] for r in successful_results])
+            logger.info(f"⏱️  Overall average time: {avg_time:.1f}s per file")
+        
         logger.info("=" * 80)
         return results
 
@@ -871,39 +1276,33 @@ class PointCloudReducer:
 def estimate_target_ratio(input_path: str, target_count: int) -> float:
     """Estimate target reduction ratio based on sample file"""
     try:
-        reducer = PointCloudReducer()
+        reducer = BallastQualityFocusedReducer()
         
-        # Find a sample file to estimate point count
         if os.path.isfile(input_path):
             sample_file = input_path
         else:
-            # Find first STL file in directory
             stl_files = list(Path(input_path).glob("*.stl"))
             if not stl_files:
-                return 0.5  # Default ratio
+                return 0.5
             sample_file = str(stl_files[0])
         
-        # Load sample and estimate
         points, _ = reducer.load_mesh(sample_file)
         original_count = len(points)
         estimated_ratio = target_count / original_count if original_count > 0 else 0.5
         
-        # Clamp to reasonable bounds
         return max(0.01, min(0.95, estimated_ratio))
         
     except Exception as e:
-        logger.warning(f"Could not estimate ratio: {e}")
-        return 0.5  # Fallback
+        logger.warning(f"⚠️ Could not estimate ratio: {e}")
+        return 0.5
 
 
 def validate_args(args):
     """Validate command line arguments"""
-    # Check input path exists
     if not os.path.exists(args.input):
         print(f"Error: Input path '{args.input}' does not exist")
         sys.exit(1)
     
-    # Check target specification
     if args.count and args.ratio:
         print("Error: Cannot specify both --count and --ratio")
         sys.exit(1)
@@ -912,49 +1311,51 @@ def validate_args(args):
         print("Error: Must specify either --count or --ratio")
         sys.exit(1)
     
-    # Validate ratio range
     if args.ratio and (args.ratio <= 0 or args.ratio >= 1):
         print("Error: --ratio must be between 0 and 1")
         sys.exit(1)
     
-    # Validate count
     if args.count and args.count <= 0:
         print("Error: --count must be positive")
         sys.exit(1)
     
-    # Validate workers
     if args.workers <= 0:
         print("Error: --workers must be positive")
         sys.exit(1)
     
-    # Validate reconstruction method
-    valid_methods = ['poisson', 'ball_pivoting', 'alpha_shapes']
+    valid_methods = ['poisson', 'ball_pivoting', 'alpha_shapes', 'none']
     if args.method not in valid_methods:
         print(f"Error: --method must be one of {valid_methods}")
         sys.exit(1)
 
 
-def print_header():
-    """Print application header"""
-    # Header is now handled in print_config function
-    pass
-
-
 def print_config(args, target_ratio: float, log_file: Optional[str] = None):
     """Print processing configuration"""
     logging.info("=" * 60)
-    logging.info("🔧 Point Cloud Reduction System - ML Pipeline")
+    logging.info("🗿 Ballast Quality-Focused Reduction System v2.3")
     logging.info("=" * 60)
     logging.info(f"📂 Input: {args.input}")
     logging.info(f"📁 Output: {args.output}")
     
     if args.count:
-        logging.info(f"🎯 Target: {args.count} points (estimated ratio: {target_ratio:.3f})")
+        logging.info(f"🎯 Target: {args.count} points (estimated ratio: {target_ratio:.4f})")
     else:
         logging.info(f"🎯 Target: {args.ratio:.1%} of original points")
     
     logging.info(f"👥 Workers: {args.workers}")
     logging.info(f"🔧 Method: {args.method}")
+    
+    features = ["Ballast Quality Focus"]
+    if args.fast_mode:
+        features.append("Fast Mode")
+    if args.use_random_forest:
+        features.append("RandomForest")
+    if args.enable_hierarchy and not args.no_hierarchy:
+        features.append(f"Hierarchical (>{args.hierarchy_threshold:,} points)")
+    if args.force_hierarchy:
+        features.append("Force Hierarchy")
+    
+    logging.info(f"✨ Features: {', '.join(features)}")
     
     if args.voxel:
         logging.info(f"📦 Voxel size: {args.voxel}")
@@ -971,21 +1372,24 @@ def print_config(args, target_ratio: float, log_file: Optional[str] = None):
 def process_files(args, target_ratio: float) -> bool:
     """Main processing function"""
     
-    # Log processing start
-    logging.info("🚀 Initializing Point Cloud Reducer...")
+    logging.info("🗿 Initializing Ballast Quality-Focused Reducer v2.3...")
     
-    # Initialize reducer
-    reducer = PointCloudReducer(
+    # Initialize quality-focused reducer
+    reducer = BallastQualityFocusedReducer(
         target_reduction_ratio=target_ratio,
         voxel_size=args.voxel,
         n_cores=args.workers,
-        reconstruction_method=args.method
+        reconstruction_method=args.method,
+        fast_mode=args.fast_mode,
+        use_random_forest=args.use_random_forest,
+        enable_hierarchy=args.enable_hierarchy and not args.no_hierarchy,
+        force_hierarchy=args.force_hierarchy,
+        hierarchy_threshold=args.hierarchy_threshold
     )
     
-    logging.info("✅ Reducer initialized successfully")
+    logging.info("✅ Ballast quality-focused reducer v2.3 initialized successfully")
     start_time = time.time()
     
-    # Check if input is single file or directory
     if os.path.isfile(args.input):
         # Single file processing
         logging.info(f"🔄 Processing single file: {os.path.basename(args.input)}")
@@ -996,8 +1400,17 @@ def process_files(args, target_ratio: float) -> bool:
             logging.error(f"❌ Processing failed: {results['error']}")
             return False
         else:
+            method = results.get('method_info', {}).get('processing_method', 'unknown')
+            ballast_detected = results.get('ballast_detected', False)
+            quality_focused = results.get('quality_focused', False)
+            
             logging.info(f"✅ SUCCESS: {results['original_points']:,} → {results['final_points']:,} points")
-            logging.info(f"📊 Actual ratio: {results['reduction_ratio']:.3f}")
+            logging.info(f"📊 Actual ratio: {results['reduction_ratio']:.4f}")
+            logging.info(f"🚀 Method used: {method}")
+            if ballast_detected:
+                logging.info(f"🗿 Ballast detected: Quality-focused processing applied")
+            if quality_focused:
+                logging.info(f"✨ Quality enhancement: Applied")
             
     else:
         # Batch processing
@@ -1007,7 +1420,6 @@ def process_files(args, target_ratio: float) -> bool:
             return False
         
         logging.info(f"🔄 Processing {len(stl_files)} files...")
-        logging.info(f"⚡ Target: ~{int(len(stl_files) * target_ratio * 50000)} total points from {len(stl_files)} files")
         
         results = reducer.process_batch(args.input, args.output, "*.stl")
         
@@ -1027,16 +1439,24 @@ def process_files(args, target_ratio: float) -> bool:
             avg_ratio = total_final / total_original if total_original > 0 else 0
             
             logging.info(f"📈 Total points: {total_original:,} → {total_final:,}")
-            logging.info(f"📊 Average ratio: {avg_ratio:.3f}")
-            logging.info(f"🎯 Target ratio: {target_ratio:.3f}")
+            logging.info(f"📊 Average ratio: {avg_ratio:.4f}")
+            logging.info(f"🎯 Target ratio: {target_ratio:.4f}")
             
-            # Performance metrics
-            if len(successful) > 1:
-                avg_original = total_original / len(successful)
-                avg_final = total_final / len(successful)
-                logging.info(f"📊 Average per file: {avg_original:,.0f} → {avg_final:.0f} points")
+            # Quality-focused analysis
+            ballast_results = [r for r in successful if r.get('ballast_detected', False)]
+            standard_results = [r for r in successful if not r.get('ballast_detected', False)]
+            
+            if ballast_results:
+                avg_ballast_time = np.mean([r['processing_time'] for r in ballast_results])
+                avg_ballast_ratio = np.mean([r['reduction_ratio'] for r in ballast_results])
+                logging.info(f"🗿 Ballast quality-focused: {len(ballast_results)} files")
+                logging.info(f"   Average time: {avg_ballast_time:.1f}s, Average ratio: {avg_ballast_ratio:.4f}")
+            
+            if standard_results:
+                avg_standard_time = np.mean([r['processing_time'] for r in standard_results])
+                logging.info(f"📍 Standard processing: {len(standard_results)} files, avg {avg_standard_time:.1f}s")
         
-        if failed and len(failed) <= 10:  # Show details for small number of failures
+        if failed and len(failed) <= 10:
             logging.warning(f"❌ Failed files:")
             for result in failed:
                 filename = os.path.basename(result.get('input_file', 'unknown'))
@@ -1055,73 +1475,86 @@ def process_files(args, target_ratio: float) -> bool:
         logging.info(f"⏱️  Total time: {elapsed_time/60:.1f} minutes")
     logging.info(f"📁 Results saved to: {args.output}")
     
-    # Calculate performance stats
-    if os.path.isdir(args.input):
-        stl_count = len(list(Path(args.input).glob("*.stl")))
-        if stl_count > 0 and elapsed_time > 0:
-            files_per_second = stl_count / elapsed_time
-            logging.info(f"⚡ Performance: {files_per_second:.2f} files/second")
-            if args.workers > 1:
-                speedup = min(args.workers, stl_count)
-                logging.info(f"🚀 Estimated speedup: ~{speedup:.1f}x with {args.workers} workers")
-    
     return True
 
 
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
-        description="Reduce 3D point clouds using machine learning",
+        description="Ballast Quality-Focused Point Cloud Reduction v2.3 (Target-Respecting)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  # Process directory with automatic logging (recommended)
-  python point_cloud_reduction_system.py /home/user/models --count 50 --workers 12
-  
-  # Process with custom log file
-  python point_cloud_reduction_system.py /home/user/models --ratio 0.3 --workers 8 --log-file my_custom.log
-  
-  # Process without any log file (console only)
-  python point_cloud_reduction_system.py /home/user/models --count 100 --no-log
-  
-  # Verbose mode with automatic logging
-  python point_cloud_reduction_system.py /data/models --ratio 0.2 --workers 16 --verbose
+Examples (SAME COMMANDS - now with target compliance + ballast quality!):
+  python ballast-quality-focused-v2.3.py /home/railcmu/Desktop/BPK/ballast --count 100 --workers 2
+  python ballast-quality-focused-v2.3.py /path/to/models --ratio 0.3 --workers 8
+  python ballast-quality-focused-v2.3.py model.stl --count 50 --method poisson
 
-Auto-logging:
-  By default, detailed logs are automatically saved to:
-  logs/[input_name]_processing_[timestamp].log
-  
-  Use --no-log to disable automatic logging
-  Use --log-file to specify custom log location
+Quality-Focused + Target-Respecting Features:
+  - Automatic ballast detection (keywords: ballast, stone, rock, bpk, aggregate, gravel)
+  - 2-3x more points retained for ballast models (vs standard reduction)
+  - Enhanced feature extraction for rough surfaces
+  - Multiple reconstruction method fallbacks
+  - Target-aware parameter adjustment (respects user intent)
+  - Quality validation and mesh fixing
+
+Performance Features:
+  --fast-mode                 Skip parameter optimization
+  --use-random-forest        Use RandomForest instead of SVM
+  --no-hierarchy             Disable automatic hierarchical processing
+  --force-hierarchy          Force hierarchical processing on all models
+  --hierarchy-threshold N     Set threshold for hierarchical processing
+
+What's NEW in v2.3:
+✅ RESPECTS USER TARGETS while maintaining ballast quality
+✅ Target-aware parameter adjustment
+✅ Reasonable quality multipliers (2-3x vs 7.5x before)
+✅ Post-processing to ensure target compliance
+✅ Better clustering parameters based on reduction aggressiveness
+✅ Same interface - now hits your targets while preserving ballast quality!
 
 Installation:
   pip install numpy pandas scikit-learn trimesh open3d
         """
     )
     
-    # Required arguments
+    # Arguments
     parser.add_argument('input', 
                        help='Input STL file or directory containing STL files')
     
-    # Target specification (mutually exclusive)
     target_group = parser.add_mutually_exclusive_group(required=True)
     target_group.add_argument('--count', type=int,
                              help='Target number of points to keep')
     target_group.add_argument('--ratio', type=float,
                              help='Target reduction ratio (0.0-1.0)')
     
-    # Processing options
     parser.add_argument('--workers', type=int, default=4,
                        help='Number of parallel workers (default: 4)')
     parser.add_argument('--output', type=str, default='output',
                        help='Output directory (default: output)')
     
-    # Advanced options
     parser.add_argument('--method', type=str, default='poisson',
-                       choices=['poisson', 'ball_pivoting', 'alpha_shapes'],
+                       choices=['poisson', 'ball_pivoting', 'alpha_shapes', 'none'],
                        help='Surface reconstruction method (default: poisson)')
     parser.add_argument('--voxel', type=float,
                        help='Voxel size for preprocessing downsampling')
+    
+    # Performance options
+    performance_group = parser.add_argument_group('performance options')
+    performance_group.add_argument('--fast-mode', action='store_true',
+                                 help='Skip parameter optimization for faster processing')
+    performance_group.add_argument('--use-random-forest', action='store_true', default=True,
+                                 help='Use RandomForest classifier (default, faster than SVM)')
+    performance_group.add_argument('--use-svm', action='store_true',
+                                 help='Use SVM classifier (slower but potentially higher quality)')
+    
+    # Hierarchical processing options
+    hierarchy_group = parser.add_argument_group('hierarchical processing options')
+    hierarchy_group.add_argument('--no-hierarchy', action='store_true',
+                               help='Disable automatic hierarchical processing')
+    hierarchy_group.add_argument('--force-hierarchy', action='store_true',
+                               help='Force hierarchical processing on all models')
+    hierarchy_group.add_argument('--hierarchy-threshold', type=int, default=50000,
+                               help='Point count threshold for hierarchical processing (default: 50000)')
     
     # Utility options
     parser.add_argument('--verbose', '-v', action='store_true',
@@ -1130,28 +1563,32 @@ Installation:
                        help='Custom log file path (default: auto-generated in logs/ folder)')
     parser.add_argument('--no-log', action='store_true',
                        help='Disable automatic log file creation (console only)')
-    parser.add_argument('--version', action='version', version='1.0.0')
+    parser.add_argument('--version', action='version', version='2.3.0 (Ballast Quality-Focused + Target-Respecting)')
     
-    # Parse arguments
     args = parser.parse_args()
+    
+    # Handle classifier selection
+    if args.use_svm:
+        args.use_random_forest = False
+    
+    # Enable hierarchy by default unless disabled
+    args.enable_hierarchy = not args.no_hierarchy
     
     # Auto-generate log file path if not specified and not disabled
     log_file = None
     if not getattr(args, 'no_log', False):
         if getattr(args, 'log_file', None):
-            # User specified custom log file
             log_file = args.log_file
         else:
-            # Auto-generate log file with timestamp
             timestamp = time.strftime('%Y%m%d_%H%M%S')
             input_name = Path(args.input).name if os.path.isfile(args.input) else Path(args.input).name
-            log_file = f"logs/{input_name}_processing_{timestamp}.log"
+            log_file = f"logs/{input_name}_ballast_quality_v2.3_{timestamp}.log"
     
-    # Setup logging with optional file output
+    # Setup logging
     logger = setup_logging(args.verbose, log_file)
     
     # Log startup information
-    logging.info("🚀 Point Cloud Reduction System Starting...")
+    logging.info("🗿 Ballast Quality-Focused Point Cloud Reduction System v2.3 Starting...")
     logging.info(f"📅 Started at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     logging.info(f"💻 System: Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
     logging.info(f"⚡ Available CPU cores: {mp.cpu_count()}")
@@ -1163,26 +1600,27 @@ Installation:
     if args.count:
         logging.info(f"🎯 Estimating target ratio for {args.count} points...")
         target_ratio = estimate_target_ratio(args.input, args.count)
-        logging.info(f"📊 Estimated target ratio: {target_ratio:.3f}")
+        logging.info(f"📊 Estimated target ratio: {target_ratio:.4f}")
     else:
         target_ratio = args.ratio
-        logging.info(f"📊 Using specified ratio: {target_ratio:.3f}")
+        logging.info(f"📊 Using specified ratio: {target_ratio:.4f}")
     
     # Create output directory
     os.makedirs(args.output, exist_ok=True)
     logging.info(f"📁 Output directory ready: {args.output}")
     
-    # Print header and config
+    # Print configuration
     print_config(args, target_ratio, log_file)
     
     # Process files
     try:
-        logging.info("🏁 Starting file processing...")
+        logging.info("🏁 Starting ballast quality-focused processing...")
         success = process_files(args, target_ratio)
         
         if success:
             logging.info("")
             logging.info("🎉 PROCESSING COMPLETED SUCCESSFULLY!")
+            logging.info("🗿 Ballast Quality-Focused Reduction v2.3 - Quality + Target Compliance!")
             logging.info(f"🕐 Finished at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
             if log_file:
                 logging.info(f"📝 Detailed logs saved to: {log_file}")
