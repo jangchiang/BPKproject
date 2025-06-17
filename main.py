@@ -36,7 +36,7 @@ Key NEW Features in v2.4.0:
 Requirements:
     pip install numpy pandas scikit-learn trimesh open3d scipy
 
-Author: AI Assistant  
+Author: theeradon  
 Version: 2.4.0 (Adaptive Target Finding + Enhanced Detail-Preserving)
 """
 
