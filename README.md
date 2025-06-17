@@ -25,9 +25,10 @@
 16. [Technical Specifications](#technical-specifications)
 17. [Input File Requirements & Validation](#input-file-requirements--validation)
 18. [Output Interpretation Guide](#output-interpretation-guide)
-19. [Limitations & Known Issues](#limitations--known-issues)
-20. [Frequently Asked Questions (FAQ)](#frequently-asked-questions-faq)
-21. [Conclusion](#conclusion)
+19. [Enhanced Ballast Analysis Documentation & Records](#enhanced-ballast-analysis-documentation--records)
+20. [Limitations & Known Issues](#limitations--known-issues)
+21. [Frequently Asked Questions (FAQ)](#frequently-asked-questions-faq)
+22. [Conclusion](#conclusion)
 
 ---
 
