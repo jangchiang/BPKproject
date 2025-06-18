@@ -85,37 +85,13 @@
 **Marcon, M., Spezialetti, R., Salti, S., Silva, L., & Di Stefano, L. (2019).** Boosting object recognition in point clouds by saliency detection. *Pattern Recognition Letters*, 125, 343-350. DOI: 10.1007/978-3-030-30754-7_32
 
 
-## 5. Mesh Quality Assessment, Hole Filling, and Surface Smoothing
-
-### Mesh Quality Assessment
-
-**Sorgente, T., et al. (2023).** A survey of indicators for mesh quality assessment. *Computer Graphics Forum*, 42(2), 461-483.
-
-**Lavoué, G. (2011).** A multiscale metric for 3D mesh visual quality assessment. *Computer Graphics Forum*, 30(5), 1427-1437.
-
-### Hole Filling Algorithms
-
-**Liepa, P. (2003).** Filling holes in meshes. *Eurographics Symposium on Geometry Processing*, 200-206. DOI: 10.2312/SGP/SGP03/200-206
-
-**Davis, J., Marschner, S. R., Garr, M., & Levoy, M. (2002).** Filling holes in complex surfaces using volumetric diffusion. *3D Data Processing Visualization and Transmission*, 428-438.
-
-**Zhao, W., Gao, S., & Lin, H. (2007).** A robust hole-filling algorithm for triangular mesh. *The Visual Computer*, 23(12), 987-997.
-
-### Feature-Preserving Surface Smoothing
-
-**Jones, T. R., Durand, F., & Desbrun, M. (2003).** Non-iterative, feature-preserving mesh smoothing. *ACM Transactions on Graphics*, 22(3), 943-949.
-
-**Fleishman, S., Drori, I., & Cohen-Or, D. (2003).** Bilateral mesh denoising. *ACM Transactions on Graphics*, 22(3), 950-953.
-
-**Desbrun, M., Meyer, M., Schröder, P., & Barr, A. H. (1999).** Implicit fairing of irregular meshes using diffusion and curvature flow. *SIGGRAPH*, 317-324.
-
-## 6. Adaptive Algorithms and Target Optimization
+## 5. Adaptive Algorithms and Target Optimization
 
 **Metzer, G., Hanocka, R., Zorin, D., Giryes, R., Panozzo, D., & Cohen-Or, D. (2021).** Self-sampling for neural point cloud consolidation. *ACM Transactions on Graphics*, 40(4), Article 115. DOI: 10.1145/3450626.3459836
 
 **Lang, I., Manor, A., & Avidan, S. (2020).** SampleNet: Differentiable point cloud sampling. *CVPR 2020*, 7578-7588.
 
-## 7. DBSCAN Clustering for Spatial Data
+## 6. DBSCAN Clustering for Spatial Data
 
 ### Foundational Work
 
@@ -131,7 +107,7 @@
 
 **Wang, L., Chen, R., Sun, H., & Variety, W. (2020).** CC-DBSCAN: Clustering with class constraint for point cloud processing. *IEEE Geoscience and Remote Sensing Letters*, 17(4), 558-562.
 
-## 8. Zone-based and Hierarchical Processing
+## 7. Zone-based and Hierarchical Processing
 
 ### Octree-Based Methods
 
@@ -149,7 +125,7 @@
 
 **Li, L., Yang, F., Zhu, H., Li, D., Li, Y., & Tang, L. (2017).** An improved RANSAC for 3D point cloud plane segmentation based on normal distribution transformation cells. *Remote Sensing*, 9(5), 433.
 
-## 9. Quality-focused Reconstruction Preserving Surface Texture and Roughness
+## 8. Quality-focused Reconstruction Preserving Surface Texture and Roughness
 
 **Sulzer, R., Marlet, R., Vallet, B., & Landrieu, L. (2024).** A survey and benchmark of automatic surface reconstruction from point clouds. *IEEE Transactions on Pattern Analysis & Machine Intelligence*, 47(3), 2000-2019.
 
@@ -157,7 +133,7 @@
 
 **Yu, Z., Sattler, T., & Geiger, A. (2024).** Gaussian opacity fields: Efficient adaptive surface reconstruction in unbounded scenes. *ACM Transactions on Graphics (SIGGRAPH Asia)*.
 
-## 10. Vertex Prediction and Geometric Complexity Estimation
+## 9. Vertex Prediction and Geometric Complexity Estimation
 
 **Cinat, P., Gnecco, G., & Paggi, M. (2019).** Artificial intelligence for the design of symmetric roughness with tailored isotropy. *Tribology International*, 133, 73-83.
 
@@ -165,7 +141,7 @@
 
 **Kazhdan, M., & Hoppe, H. (2018).** An adaptive multi-grid solver for applications in computer graphics. *Computer Graphics Forum*, 37(5), 138-150.
 
-## 11. Boundary Detection and Edge Preservation in Point Clouds
+## 10. Boundary Detection and Edge Preservation in Point Clouds
 
 **Bode, L., Frintrop, S., & Kohlbrecher, S. (2023).** BoundED: Neural boundary and edge detection in 3D point clouds via local neighborhood statistics. *arXiv preprint arXiv:2310.12567*.
 
