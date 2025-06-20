@@ -5,6 +5,7 @@
 **Date:** December 2024  
 **Authors:** Theeradon
 
+
 ---
 
 ## Table of Contents
@@ -21,15 +22,18 @@
 10. [Troubleshooting](#10-troubleshooting)
 11. [References](#11-references)
 
+
 ---
 
 ## 1. Project Overview
 
 ### 1.1 Introduction
 
+
 The GPU-Accelerated ML Point Cloud Reduction System is an advanced computational framework designed to intelligently reduce the complexity of 3D point clouds while preserving essential geometric features. The system combines multiple machine learning techniques with GPU acceleration to achieve high-performance point cloud simplification suitable for real-time applications, 3D modeling, and computer graphics.
 
 ### 1.2 Problem Statement
+
 
 Traditional point cloud reduction methods often suffer from:
 - **Loss of Important Geometric Features**: Simple uniform sampling may remove critical details
@@ -232,6 +236,7 @@ The final importance mask is:
 $$\mathcal{I} = \{p_i : s_i > \theta\} \cup \bigcup_{p_j \in \{p_i : s_i > \theta\}} \mathcal{N}_k(p_j)$$
 
 ### 4.4 Hybrid Merging
+
 
 #### 4.4.1 Radius Merge
 Points within distance $\epsilon$ are merged:
@@ -473,6 +478,7 @@ cpu_result = cp.asnumpy(gpu_data)  # GPU to CPU
 
 ### 7.2 Accelerated Algorithms
 
+
 #### 7.2.1 Voxel Downsampling
 ```python
 # Parallel voxel key computation
@@ -505,6 +511,7 @@ svm_model.fit(gpu_features, labels)
 ```
 
 ### 7.3 Performance Optimization
+
 
 #### 7.3.1 Memory Access Patterns
 - **Coalesced Access**: Align memory access patterns
@@ -738,6 +745,7 @@ sizes = [1000, 5000, 10000, 50000, 100000, 500000, 1000000]
 cpu_times = [1.2, 5.8, 23.1, 115, 245, 1200, 2400]
 gpu_times = [0.8, 1.5, 4.2, 12.8, 28, 89, 180]
 
+
 # Speedup calculation
 speedups = [c/g for c, g in zip(cpu_times, gpu_times)]
 ```
@@ -841,7 +849,6 @@ python gpu_pointcloud_reducer.py \
     --batch-size 15000 \
     --svm-ratio 0.05
 ```
-
 ### 10.2 Error Diagnostics
 
 #### 10.2.1 Enable Debug Logging
