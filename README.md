@@ -227,6 +227,7 @@ Where $\mathcal{H}$ is the convex hull surface and $\epsilon$ prevents division 
 #### 4.2.1 Intelligent Point Reduction
 Combined importance scoring for optimal point selection:
 
+
 $$\mathbf{s}_i = \alpha \cdot \sigma_i + \beta \cdot \delta_i + \gamma \cdot \beta_i$$
 
 Where:
