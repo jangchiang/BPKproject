@@ -212,7 +212,9 @@ The spatial diversity score measures point isolation:
 
 $$\delta_i = \frac{1}{k}\sum_{j=1}^{k}d(\mathbf{p}_i, \mathbf{p}_{j}^{(nn)})$$
 
-Where $\mathbf{p}_{j}^{(nn)}$ are the k-nearest neighbors, normalized to $[0,1]$:
+
+Where 
+$\mathbf{p}_{j}^{(nn)}$ are the k-nearest neighbors, normalized to $[0,1]$:
 $$\delta_i^{norm} = \frac{\delta_i - \delta_{min}}{\delta_{max} - \delta_{min}}$$
 
 #### 4.1.3 🆕 Boundary Importance Score
