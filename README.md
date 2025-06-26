@@ -241,6 +241,7 @@ Simulation-specific quality assessment:
 $$Q_{LMGC90} = 0.4 \cdot I_{convex} + 0.3 \cdot I_{vertices} + 0.3 \cdot Q_{geometric}$$
 
 Where:
+
 - $I_{convex} = 1$ if convex, $0$ otherwise
 - $I_{vertices} = 1$ if $350 \leq V \leq 500$, scaled otherwise
 - $Q_{geometric}$ is the geometric quality score
@@ -251,6 +252,7 @@ Target vertex count optimization:
 $$V^* = \argmin_{V} |R(P_{reduced}) - V_{target}|$$
 
 Subject to:
+
 - $V_{min} \leq V \leq V_{max}$
 - $R(P_{reduced})$ is convex
 - Quality score $Q \geq Q_{threshold}$
