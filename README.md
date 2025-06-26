@@ -201,6 +201,7 @@ For each point $p_i$, we compute the local curvature using Principal Component A
 $$\mathbf{C} = \frac{1}{k}\sum_{j=1}^{k}(\mathbf{p}_j - \bar{\mathbf{p}})(\mathbf{p}_j - \bar{\mathbf{p}})^T$$
 
 The enhanced curvature measure includes stability checking:
+
 $$\kappa_i = \begin{cases}
 \frac{\lambda_{\min}}{\lambda_{\max} + \lambda_{\text{med}} + \lambda_{\min}} & \text{if } \sum\lambda_i > \epsilon \\
 0 & \text{otherwise}
