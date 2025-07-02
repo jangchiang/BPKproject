@@ -1,3 +1,4 @@
+# Explaination of methodology and theory in simplfy version (maybe)
 # 3. Methodology
 
 ## 3.1 Algorithm Overview
@@ -38,10 +39,10 @@ Geometric importance is assessed using an unsupervised SVM with pseudo-labeling 
 $$I_g(p_i) = \text{SVM}_{rbf}(\mathbf{f}(p_i))$$
 
 Pseudo-labels are generated using statistical thresholds:
-$$\text{label}(p_i) = \begin{cases} 
+$\text{label}(p_i) = \begin{cases} 
 1 & \text{if } C(p_i) > \text{percentile}_{75}(C) \text{ or } D(p_i) > \text{percentile}_{50}(D) \\
 0 & \text{otherwise}
-\end{cases}$$
+\end{cases}$
 
 **Spatial Diversity Scoring:**
 To ensure well-distributed point selection:
@@ -58,14 +59,14 @@ where $d_{\text{hull}}(p_i)$ is the distance from $p_i$ to the convex hull surfa
 ### 3.2.3 Combined Importance Scoring
 
 The final importance score integrates all three criteria through weighted combination:
-$$I_{\text{total}}(p_i) = 0.4 \cdot I_g(p_i) + 0.3 \cdot I_s(p_i) + 0.3 \cdot I_b(p_i)$$
+$I_{\text{total}}(p_i) = 0.4 \cdot I_g(p_i) + 0.3 \cdot I_s(p_i) + 0.3 \cdot I_b(p_i)$
 
 Points are ranked by $I_{\text{total}}$ and the top-scoring subset forms the seed selection $S_{\text{seed}}$.
 
 ### 3.2.4 K-Nearest Neighbors Reinforcement
 
 To enhance spatial coherence and prevent isolated point selection:
-$$S_{\text{enhanced}} = S_{\text{seed}} \cup \bigcup_{p \in S_{\text{seed}}} \text{kNN}_5(p)$$
+$S_{\text{enhanced}} = S_{\text{seed}} \cup \bigcup_{p \in S_{\text{seed}}} \text{kNN}_5(p)$
 
 This reinforcement strategy ensures adequate point density along geometric features while maintaining spatial connectivity.
 
@@ -73,14 +74,14 @@ This reinforcement strategy ensures adequate point density along geometric featu
 
 **Radius-Based Merging:**
 Points within radius $\epsilon$ are grouped into local clusters:
-$$C_r = \{C_i : C_i = \{p_j \in S_{\text{enhanced}} : \|p_j - c_i\| \leq \epsilon\}\}$$
+$C_r = \{C_i : C_i = \{p_j \in S_{\text{enhanced}} : \|p_j - c_i\| \leq \epsilon\}\}$
 
 Each cluster is represented by its geometric centroid:
 $$\mathbf{c_i} = \frac{1}{|C_i|}\sum_{p_j \in C_i} p_j$$
 
 **DBSCAN Refinement:**
 Density-Based Spatial Clustering removes noise and ensures global coherence:
-$$C_{\text{final}} = \{C_j : |C_j| \geq \text{min\_samples} \text{ and } \rho(C_j) \geq \rho_{\min}\}$$
+$C_{\text{final}} = \{C_j : |C_j| \geq \text{min\_samples} \text{ and } \rho(C_j) \geq \rho_{\min}\}$
 
 where $\rho(C_j)$ represents cluster density. Parameters are adaptively selected as:
 - $\epsilon_{\text{DBSCAN}} = 2.0 \times \epsilon_{\text{radius}}$
@@ -95,14 +96,14 @@ Stage 1 produces a geometrically significant, spatially coherent point subset $P
 ### 3.3.1 Constraint-Aware Hull Generation
 
 Stage 2 transforms the reduced point set into a convex hull satisfying strict vertex count constraints:
-$$V_{\min} \leq |\text{vertices}(\text{ConvexHull}(P_{\text{reduced}}))| \leq V_{\max}$$
+$V_{\min} \leq |\text{vertices}(\text{ConvexHull}(P_{\text{reduced}}))| \leq V_{\max}$
 
 For LMGC90 compatibility: $V_{\min} = 350$, $V_{\max} = 500$.
 
 ### 3.3.2 Initial Convex Hull Computation
 
 The reduced point set undergoes standard convex hull generation:
-$$H_{\text{initial}} = \text{ConvexHull}(P_{\text{reduced}})$$
+$H_{\text{initial}} = \text{ConvexHull}(P_{\text{reduced}})$
 
 Due to the intelligent preprocessing in Stage 1, $H_{\text{initial}}$ typically satisfies vertex constraints, though refinement may be required.
 
@@ -115,7 +116,7 @@ When the initial hull exceeds maximum constraints, hierarchical decimation is ap
 Vertices are iteratively removed based on geometric error minimization while maintaining convexity through periodic hull recomputation.
 
 *Secondary Strategy - K-Means Clustering:*
-$$\text{vertices}_{\text{new}} = \text{KMeans}(\text{vertices}_{\text{current}}, k=V_{\max}).\text{cluster\_centers\_}$$
+$\text{vertices}_{\text{new}} = \text{KMeans}(\text{vertices}_{\text{current}}, k=V_{\max}).\text{cluster\_centers\_}$
 
 This approach guarantees exact vertex count while preserving spatial distribution.
 
@@ -132,10 +133,10 @@ When vertex count is insufficient, the input point set is iteratively expanded:
 ### 3.3.4 Convexity Validation and Quality Assessment
 
 **Convexity Verification:**
-$$\text{is\_convex}(H) = \begin{cases} 
+$\text{is\_convex}(H) = \begin{cases} 
 \text{True} & \text{if } H \text{ satisfies convexity constraints} \\
 \text{False} & \text{otherwise}
-\end{cases}$$
+\end{cases}$
 
 Non-convex results trigger automatic hull recomputation.
 
@@ -143,16 +144,21 @@ Non-convex results trigger automatic hull recomputation.
 Geometric preservation is quantified through multiple criteria:
 
 *Convexity Preservation Ratio:*
-$$C_{\text{ratio}} = \frac{V_{\text{original}}}{V_{\text{convex\_hull}}}$$
+$C_{\text{ratio}} = \frac{V_{\text{original}}}{V_{\text{convex\_hull}}}$
 
 *Geometric Fidelity:*
-$$F_{\text{metric}} = 1 - \frac{|A_{\text{original}} - A_{\text{final}}|}{A_{\text{original}}}$$
+$F_{\text{metric}} = 1 - \frac{|A_{\text{original}} - A_{\text{final}}|}{A_{\text{original}}}$
 
 *Constraint Satisfaction:*
-$$V_{\text{constraint}} = \begin{cases} 
+$V_{\text{constraint}} = \begin{cases} 
 1 & \text{if } V_{\min} \leq |V_{\text{final}}| \leq V_{\max} \\
 0 & \text{otherwise}
-\end{cases}$$
+\end{cases}$
+
+*LMGC90 Simulation Readiness:*
+$S_{\text{LMGC90}} = 0.4 \cdot C_{\text{convex}} + 0.3 \cdot V_{\text{constraint}} + 0.3 \cdot F_{\text{metric}}$
+
+where $C_{\text{convex}}$ is a binary convexity indicator.
 
 ## 3.4 Computational Complexity and Implementation
 
