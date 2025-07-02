@@ -154,11 +154,6 @@ $$V_{\text{constraint}} = \begin{cases}
 0 & \text{otherwise}
 \end{cases}$$
 
-*LMGC90 Simulation Readiness:*
-$$S_{\text{LMGC90}} = 0.4 \cdot C_{\text{convex}} + 0.3 \cdot V_{\text{constraint}} + 0.3 \cdot F_{\text{metric}}$$
-
-where $C_{\text{convex}}$ is a binary convexity indicator.
-
 ## 3.4 Computational Complexity and Implementation
 
 ### 3.4.1 Algorithmic Complexity
