@@ -1,0 +1,502 @@
+% References for PCA and Curvature (Equations 1-2)
+@inproceedings{Hoppe1992,
+title={Surface reconstruction from unorganized points},
+author={Hoppe, Hugues and DeRose, Tony and Duchamp, Tom and McDonald, John and Stuetzle, Werner},
+booktitle={ACM SIGGRAPH Computer Graphics},
+volume={26},
+number={2},
+pages={71–78},
+year={1992},
+publisher={ACM}
+}
+
+@inproceedings{Pauly2002,
+title={Efficient simplification of point-sampled surfaces},
+author={Pauly, Mark and Gross, Markus and Kobbelt, Leif P},
+booktitle={IEEE Visualization},
+pages={163–170},
+year={2002},
+organization={IEEE}
+}
+
+@article{Weinmann2014,
+title={Semantic 3D scene interpretation: A framework combining optimal neighborhood size selection with relevant features},
+author={Weinmann, Martin and Jutzi, Boris and Mallet, Cl{'e}ment},
+journal={ISPRS Annals of the Photogrammetry, Remote Sensing and Spatial Information Sciences},
+volume={II-3},
+pages={181–188},
+year={2014}
+}
+
+@article{Demantke2011,
+title={Dimensionality based scale selection in 3D lidar point clouds},
+author={Demantk{'e}, J{'e}r{^o}me and Mallet, Cl{'e}ment and David, Nicolas and Vallet, Bruno},
+journal={ISPRS Archives},
+volume={XXXVIII-5/W12},
+pages={97–102},
+year={2011}
+}
+
+% References for Density Computation (Equation 3)
+@inproceedings{Ester1996,
+title={A density-based algorithm for discovering clusters in large spatial databases with noise},
+author={Ester, Martin and Kriegel, Hans-Peter and Sander, J{"o}rg and Xu, Xiaowei},
+booktitle={KDD},
+volume={96},
+number={34},
+pages={226–231},
+year={1996}
+}
+
+@inproceedings{Mitra2003,
+title={Estimating surface normals in noisy point cloud data},
+author={Mitra, Niloy J and Nguyen, An},
+booktitle={Proceedings of the nineteenth annual symposium on Computational geometry},
+pages={322–328},
+year={2003}
+}
+
+% References for Feature Vectors (Equations 4-5)
+@article{Weinmann2015,
+title={Semantic point cloud interpretation based on optimal neighborhoods, relevant features and efficient classifiers},
+author={Weinmann, Martin and Jutzi, Boris and Hinz, Stefan and Mallet, Cl{'e}ment},
+journal={ISPRS Journal of Photogrammetry and Remote Sensing},
+volume={105},
+pages={286–304},
+year={2015},
+publisher={Elsevier}
+}
+
+@incollection{Franz2016,
+title={Evaluation of features for SVM-based classification of geometric primitives in point clouds},
+author={Franz, Eric and Scholz, Thomas and Roth, Carsten},
+booktitle={Modeling, Simulation and Visual Analysis of Crowds},
+pages={80–95},
+year={2016},
+publisher={Springer}
+}
+
+@article{Blomley2016,
+title={Classification of airborne laser scanning data using geometric multi-scale features and different neighbourhood types},
+author={Blomley, Rosmarie and Jutzi, Boris and Weinmann, Martin},
+journal={ISPRS Annals of the Photogrammetry, Remote Sensing and Spatial Information Sciences},
+volume={III-3},
+pages={169–176},
+year={2016}
+}
+
+% References for SVM (Equations 6-7)
+@article{Cortes1995,
+title={Support-vector networks},
+author={Cortes, Corinna and Vapnik, Vladimir},
+journal={Machine learning},
+volume={20},
+number={3},
+pages={273–297},
+year={1995},
+publisher={Springer}
+}
+
+@article{Chang2011,
+title={LIBSVM: A library for support vector machines},
+author={Chang, Chih-Chung and Lin, Chih-Jen},
+journal={ACM transactions on intelligent systems and technology (TIST)},
+volume={2},
+number={3},
+pages={1–27},
+year={2011},
+publisher={ACM}
+}
+
+@incollection{Platt1999,
+title={Probabilistic outputs for support vector machines and comparisons to regularized likelihood methods},
+author={Platt, John},
+booktitle={Advances in large margin classifiers},
+volume={10},
+number={3},
+pages={61–74},
+year={1999},
+publisher={MIT Press}
+}
+
+% References for KNN (Equations 8-9)
+@article{Cover1967,
+title={Nearest neighbor pattern classification},
+author={Cover, Thomas and Hart, Peter},
+journal={IEEE transactions on information theory},
+volume={13},
+number={1},
+pages={21–27},
+year={1967},
+publisher={IEEE}
+}
+
+@article{Wang2022,
+title={Semantic segmentation of large-scale point clouds based on dilated nearest neighbors graph},
+author={Wang, Qiang and Kim, Min-Kook and Cheng, Jack CP},
+journal={Complex & Intelligent Systems},
+volume={8},
+pages={3833–3845},
+year={2022},
+publisher={Springer}
+}
+
+@article{Hu2021,
+title={Learning semantic segmentation of large-scale point clouds with random sampling},
+author={Hu, Qingyong and Yang, Bo and Xie, Linhai and Rosa, Stefano and Guo, Yulan and Wang, Zhihua and Trigoni, Niki and Markham, Andrew},
+journal={IEEE Transactions on Pattern Analysis and Machine Intelligence},
+volume={44},
+number={11},
+pages={8338–8354},
+year={2021},
+publisher={IEEE}
+}
+
+% References for Clustering (Equations 10-12)
+@article{Schnabel2007,
+title={Efficient RANSAC for point-cloud shape detection},
+author={Schnabel, Ruwen and Wahl, Roland and Klein, Reinhard},
+journal={Computer graphics forum},
+volume={26},
+number={2},
+pages={214–226},
+year={2007},
+publisher={Wiley Online Library}
+}
+
+@article{Czerniawski2018,
+title={6D DBSCAN-based segmentation of building point clouds for planar object detection},
+author={Czerniawski, Thomas and Nahangi, Mohammad and Haas, Carl and Walbridge, Scott},
+journal={Automation in Construction},
+volume={88},
+pages={44–58},
+year={2018},
+publisher={Elsevier}
+}
+
+% References for Parameter Optimization (Equations 13-14)
+@article{Schubert2017,
+title={DBSCAN revisited, revisited: why and how you should (still) use DBSCAN},
+author={Schubert, Erich and Sander, J{"o}rg and Ester, Martin and Kriegel, Hans Peter and Xu, Xiaowei},
+journal={ACM Transactions on Database Systems (TODS)},
+volume={42},
+number={3},
+pages={1–21},
+year={2017},
+publisher={ACM}
+}
+
+% References for Voxel Processing (Equations 15-18)
+@inproceedings{Rusu2011,
+title={3D is here: Point Cloud Library (PCL)},
+author={Rusu, Radu Bogdan and Cousins, Steve},
+booktitle={IEEE International Conference on Robotics and Automation},
+pages={1–4},
+year={2011},
+organization={IEEE}
+}
+
+@article{Schutz2020,
+title={Fast out-of-core octree generation for massive point clouds},
+author={Sch{"u}tz, Markus and Ohrhallinger, Stefan and Wimmer, Michael},
+journal={Computer Graphics Forum},
+volume={39},
+number={7},
+pages={155–167},
+year={2020},
+publisher={Wiley Online Library}
+}
+
+% References for Advanced Feature Extraction (Equations 19-23)
+@article{Weinmann2013,
+title={Feature relevance assessment for the semantic interpretation of 3D point cloud data},
+author={Weinmann, Martin and Jutzi, Boris and Mallet, Cl{'e}ment},
+journal={ISPRS Annals of the Photogrammetry, Remote Sensing and Spatial Information Sciences},
+volume={II-5/W2},
+pages={313–318},
+year={2013}
+}
+
+@article{Guo2021,
+title={Deep learning for 3D point clouds: A survey},
+author={Guo, Yulan and Wang, Hanyun and Hu, Qingyong and Liu, Hao and Liu, Li and Bennamoun, Mohammed},
+journal={IEEE transactions on pattern analysis and machine intelligence},
+volume={43},
+number={12},
+pages={4338–4364},
+year={2021},
+publisher={IEEE}
+}
+
+@article{Levin1998,
+title={The approximation power of moving least-squares},
+author={Levin, David},
+journal={Mathematics of Computation},
+volume={67},
+number={224},
+pages={1517–1531},
+year={1998}
+}
+
+@article{Alexa2003,
+title={Computing and rendering point set surfaces},
+author={Alexa, Marc and Behr, Johannes and Cohen-Or, Daniel and Fleishman, Shachar and Levin, David and Silva, Claudio T},
+journal={IEEE Transactions on Visualization and Computer Graphics},
+volume={9},
+number={1},
+pages={3–15},
+year={2003},
+publisher={IEEE}
+}
+
+@inproceedings{Lalonde2005,
+title={Scale selection for classification of point-sampled 3D surfaces},
+author={Lalonde, Jean-Fran{\c{c}}ois and Unnikrishnan, Ranjith and Vandapel, Nicolas and Hebert, Martial},
+booktitle={Fifth International Conference on 3-D Digital Imaging and Modeling},
+pages={285–292},
+year={2005},
+organization={IEEE}
+}
+
+% Railway Ballast Specific References
+@article{Suhr2020Shape,
+title={Shape analysis of railway ballast stones: curvature-based calculation of particle angularity},
+author={Suhr, Bettina and Marschnig, Stefan and Six, Klaus},
+journal={Scientific Reports},
+volume={10},
+number={1},
+pages={6045},
+year={2020},
+publisher={Nature Publishing Group}
+}
+
+@article{Suhr2020Simple,
+title={Simple particle shapes for DEM simulations of railway ballast: influence of shape descriptors on packing behaviour},
+author={Suhr, Bettina and Six, Klaus},
+journal={Granular Matter},
+volume={22},
+number={2},
+pages={43},
+year={2020},
+publisher={Springer}
+}
+
+@article{Guo2020,
+title={Calibration for discrete element modelling of railway ballast: A review},
+author={Guo, Yunlong and Zhao, Chunfa and Markine, Valeri and Jing, Guoqing and Zhai, Wanming},
+journal={Transportation Geotechnics},
+volume={23},
+pages={100341},
+year={2020},
+publisher={Elsevier}
+}
+
+@article{Anochie2013,
+title={Three-dimensional laser scanning technique to quantify aggregate and ballast shape properties},
+author={Anochie-Boateng, Joseph K and Komba, Julius J and Mvelase, Goodman M},
+journal={Construction and Building Materials},
+volume={43},
+pages={389–398},
+year={2013},
+publisher={Elsevier}
+}
+
+@article{Paixao2018,
+title={Photogrammetry for digital reconstruction of railway ballast particles–A cost-efficient method},
+author={Paix{~a}o, Andr{'e} and Resende, Ricardo and Fortunato, Eduardo},
+journal={Construction and Building Materials},
+volume={191},
+pages={963–976},
+year={2018},
+publisher={Elsevier}
+}
+
+@article{Ferellec2010,
+title={A method to model realistic particle shape and inertia in DEM},
+author={Ferellec, Jean-Fran{\c{c}}ois and McDowell, Glenn R},
+journal={Granular Matter},
+volume={12},
+number={5},
+pages={459–467},
+year={2010},
+publisher={Springer}
+}
+
+% Surface Reconstruction References
+@inproceedings{Kazhdan2006,
+title={Poisson surface reconstruction},
+author={Kazhdan, Michael and Bolitho, Matthew and Hoppe, Hugues},
+booktitle={Proceedings of the fourth Eurographics symposium on Geometry processing},
+volume={7},
+pages={61–70},
+year={2006}
+}
+
+@article{Kazhdan2013,
+title={Screened poisson surface reconstruction},
+author={Kazhdan, Michael and Hoppe, Hugues},
+journal={ACM Transactions on Graphics (ToG)},
+volume={32},
+number={3},
+pages={1–13},
+year={2013},
+publisher={ACM}
+}
+
+% Surface Reconstruction References
+@inproceedings{Kazhdan2006,
+title={Poisson surface reconstruction},
+author={Kazhdan, Michael and Bolitho, Matthew and Hoppe, Hugues},
+booktitle={Proceedings of the fourth Eurographics symposium on Geometry processing},
+volume={7},
+pages={61–70},
+year={2006}
+}
+
+@article{Kazhdan2013,
+title={Screened poisson surface reconstruction},
+author={Kazhdan, Michael and Hoppe, Hugues},
+journal={ACM Transactions on Graphics (ToG)},
+volume={32},
+number={3},
+pages={1–13},
+year={2013},
+publisher={ACM}
+}
+
+@article{Bernardini1999,
+title={The ball-pivoting algorithm for surface reconstruction},
+author={Bernardini, Fausto and Mittleman, Joshua and Rushmeier, Holly and Silva, Cl{'a}udio and Taubin, Gabriel},
+journal={IEEE transactions on visualization and computer graphics},
+volume={5},
+number={4},
+pages={349–359},
+year={1999},
+publisher={IEEE}
+}
+
+% Feature Selection Reference
+@article{Guyon2003,
+title={An introduction to variable and feature selection},
+author={Guyon, Isabelle and Elisseeff, Andr{'e}},
+journal={Journal of machine learning research},
+volume={3},
+number={Mar},
+pages={1157–1182},
+year={2003}
+}
+
+% Morphology Analysis References for Section 5
+@article{Zhang2020,
+title={Quantifying the morphology of crushed sand particles using X-ray micro-tomography},
+author={Zhang, Xin and Zhao, Changming and Zhai, Wei},
+journal={G{'e}otechnique},
+volume={70},
+number={4},
+pages={305–316},
+year={2020}
+}
+
+@article{Clayton2009,
+title={A new device for measuring local axial strains on triaxial specimens},
+author={Clayton, C. R. I. and Khatrush, S. A. and Bica, A. V. D. and Siddique, A.},
+journal={G{'e}otechnique},
+volume={39},
+number={3},
+pages={381–384},
+year={2009}
+}
+
+@article{Cho2006,
+title={Particle shape effects on packing density, stiffness, and strength: natural and crushed sands},
+author={Cho, Gye-Chun and Dodds, Jake and Santamarina, J. Carlos},
+journal={Journal of geotechnical and geoenvironmental engineering},
+volume={132},
+number={5},
+pages={591–602},
+year={2006}
+}
+
+@article{Cox2008,
+title={A practical approach to grain shape quantification},
+author={Cox, Malcolm R and Budhu, Muniram},
+journal={Engineering Geology},
+volume={96},
+number={1-2},
+pages={1–16},
+year={2008}
+}
+
+@article{Cox1927,
+title={A method of assigning numerical and percentage values to the degree of roundness of sand grains},
+author={Cox, E. P.},
+journal={Journal of Paleontology},
+volume={1},
+number={3},
+pages={179–183},
+year={1927}
+}
+
+@article{Wadell1935,
+title={Volume, shape, and roundness of quartz particles},
+author={Wadell, Hakon},
+journal={The Journal of Geology},
+volume={43},
+number={3},
+pages={250–280},
+year={1935}
+}
+
+@techreport{Masad2005,
+title={Aggregate imaging system (AIMS): Basics and applications},
+author={Masad, Eyad},
+year={2005},
+institution={International Center for Aggregates Research, The University of Texas at Austin},
+number={ICAR-1-CE-05}
+}
+
+@article{Krumbein1941,
+title={Measurement and geological significance of shape and roundness of sedimentary particles},
+author={Krumbein, William Christian},
+journal={Journal of Sedimentary Research},
+volume={11},
+number={2},
+pages={64–72},
+year={1941}
+}
+
+@article{Kuo2000,
+title={Imaging indices for quantification of shape, angularity, and surface texture of aggregates},
+author={Kuo, C. Y. and Freeman, R. B.},
+journal={Transportation Research Record},
+volume={1721},
+number={1},
+pages={57–65},
+year={2000}
+}
+
+@techreport{Masad2000,
+title={The development of a computer controlled image analysis system for measuring aggregate shape properties},
+author={Masad, Eyad and Button, Joe W},
+year={2000},
+institution={National Cooperative Highway Research Program},
+number={NCHRP-IDEA Project 77}
+}
+
+% Additional references for completeness
+@inproceedings{Lalonde2005,
+title={Scale selection for classification of point-sampled 3D surfaces},
+author={Lalonde, Jean-Fran{\c{c}}ois and Unnikrishnan, Ranjith and Vandapel, Nicolas and Hebert, Martial},
+booktitle={Fifth International Conference on 3-D Digital Imaging and Modeling (3DIM’05)},
+pages={285–292},
+year={2005},
+organization={IEEE}
+}
+
+@article{Hu2021CVPR,
+title={Towards semantic segmentation of urban-scale 3D point clouds: A dataset, benchmarks and challenges},
+author={Hu, Qingyong and Yang, Bo and Khalid, Sheikh and Xiao, Wen and Trigoni, Niki and Markham, Andrew},
+booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+pages={4977–4987},
+year={2021}
+}
