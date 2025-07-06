@@ -1,0 +1,248 @@
+% HOW TO CITE EACH EQUATION IN YOUR LATEX DOCUMENT
+
+% Section 3: Architecture-MP
+
+% For Equation (1) - Local curvature using PCA:
+The local curvature using principal component analysis is~\cite{Hoppe1992,Pauly2002}:
+\begin{equation}
+\mathbf{C} = \frac{1}{k}\sum_{j=1}^{k}(\mathbf{p}_j - \bar{\mathbf{p}})(\mathbf{p}_j - \bar{\mathbf{p}})^T
+\label{eq:curvature}
+\end{equation}
+
+% For Equation (2) - Curvature measure:
+The curvature measure is computed as~\cite{Weinmann2014,Demantke2011}:
+\begin{equation}
+\kappa_i = \frac{\lambda_{\min}}{\lambda_{\max} + \lambda_{\text{med}} + \lambda_{\min}}
+\label{eq:curvature_measure}
+\end{equation}
+
+% For Equation (3) - Local density:
+The local density around point $p_i$ is computed as~\cite{Ester1996,Mitra2003}:
+\begin{equation}
+\rho_i = \frac{1}{V_r}\sum_{j=1}^{n}\mathbf{1}_{||\mathbf{p}_j - \mathbf{p}_i|| \leq r}
+\label{eq:density}
+\end{equation}
+
+% For Equation (4) - Distance to centroid:
+The distance from each point to the global centroid~\cite{Weinmann2015}:
+\begin{equation}
+d_i = ||\mathbf{p}_i - \mathbf{c}||
+\label{eq:distance}
+\end{equation}
+
+% For Equation (5) - Feature vector:
+The feature vector construction follows~\cite{Franz2016,Blomley2016}:
+\begin{equation}
+\mathbf{f}_i = [\kappa_i, \rho_i, d_i, ||\mathbf{n}_i||]^T
+\label{eq:feature_vector}
+\end{equation}
+
+% For Equation (6) - SVM decision function:
+The SVM decision function is defined as~\cite{Cortes1995,Chang2011}:
+\begin{equation}
+g(\mathbf{f}) = \text{sign}\left(\sum_{i=1}^{n_s}\alpha_i y_i K(\mathbf{f}_i, \mathbf{f}) + b\right)
+\label{eq:svm_decision}
+\end{equation}
+
+% For Equation (7) - Importance score:
+The importance score for each point is calculated using~\cite{Platt1999}:
+\begin{equation}
+s_i = P(y_i = 1 | \mathbf{f}_i) = \frac{1}{1 + \exp(-g(\mathbf{f}_i))}
+\label{eq:importance_score}
+\end{equation}
+
+% For Equation (8) - KNN neighbors:
+For each important point, we include its $k$ nearest neighbors~\cite{Cover1967,Wang2022}:
+\begin{equation}
+\mathcal{N}_k(p_i) = {p_j : ||\mathbf{p}_j - \mathbf{p}*i|| \leq ||\mathbf{p}*{(k)} - \mathbf{p}_i||}
+\label{eq:knn_neighbors}
+\end{equation}
+
+% For Equation (9) - Importance set:
+The final importance set is constructed as~\cite{Hu2021}:
+\begin{equation}
+\mathcal{I} = {p_i : s_i > \theta} \cup \bigcup_{p_j \in {p_i : s_i > \theta}} \mathcal{N}_k(p_j)
+\label{eq:importance_set}
+\end{equation}
+
+% For Equations (10-11) - Clustering:
+Points within distance $\epsilon$ are merged~\cite{Schnabel2007}:
+\begin{equation}
+\mathcal{C}_\epsilon(p_i) = {p_j : ||\mathbf{p}_j - \mathbf{p}_i|| \leq \epsilon}
+\label{eq:cluster_radius}
+\end{equation}
+
+The cluster centroid is~\cite{Schnabel2007}:
+\begin{equation}
+\mathbf{c}*i = \frac{1}{|\mathcal{C}*\epsilon(p_i)|}\sum_{p_j \in \mathcal{C}_\epsilon(p_i)} \mathbf{p}_j
+\label{eq:cluster_centroid}
+\end{equation}
+
+% For Equation (12) - DBSCAN core point:
+A point $p$ is a core point if~\cite{Ester1996,Czerniawski2018}:
+\begin{equation}
+|\mathcal{N}_\epsilon(p)| \geq \text{MinPts}
+\label{eq:core_point}
+\end{equation}
+
+% For Equations (13-14) - Optimization:
+The optimal epsilon is determined by~\cite{Schubert2017}:
+\begin{equation}
+\epsilon^* = \argmin_{\epsilon} |f(\epsilon) - V_{\text{target}}|
+\label{eq:optimal_epsilon}
+\end{equation}
+
+\begin{equation}
+\epsilon_i = \epsilon_{\min} + \frac{i}{n-1}(\epsilon_{\max} - \epsilon_{\min}), \quad i = 0, 1, \ldots, n-1
+\label{eq:epsilon_range}
+\end{equation}
+
+% Section 4: Methodology-MP
+
+% For Equations (15-18) - Voxel processing:
+The voxel grid discretization follows~\cite{Rusu2011,Schutz2020}:
+\begin{equation}
+\begin{aligned}
+V_{i,j,k} = {p \in \mathbb{R}^3 : is \leq p_x < (i+1)s, \
+js \leq p_y < (j+1)s, \ks \leq p_z < (k+1)s}
+\label{eq:voxel_definition}
+\end{aligned}
+\end{equation}
+
+Where the voxel index is given by~\cite{Rusu2011}:
+\begin{equation}
+\text{voxel_index}(p) = \left\lfloor\frac{p - p_{min}}{s}\right\rfloor
+\label{eq:voxel_index}
+\end{equation}
+
+Centroid-based representation is computed as~\cite{Rusu2011}:
+\begin{equation}
+p’*{i,j,k} = \frac{1}{|P*{i,j,k}|} \sum_{p \in P_{i,j,k}} p
+\label{eq:centroid_representation}
+\end{equation}
+
+The representative normal is computed through~\cite{Hoppe1992}:
+\begin{equation}
+n’*{i,j,k} = \frac{\sum*{n \in N_{i,j,k}} n}{\left|\sum_{n \in N_{i,j,k}} n\right|}
+\label{eq:normal_averaged}
+\end{equation}
+
+% For Equation (19) - Multi-dimensional feature:
+Multi-dimensional feature vector construction~\cite{Weinmann2013,Guo2021}:
+\begin{equation}
+\mathbf{f}(p_i) = [C(p_i), D(p_i), G(p_i), N(p_i)]^T
+\label{eq:multi_feature_vector}
+\end{equation}
+
+% For Equation (20) - k-NN density:
+k-Nearest Neighbor Density~\cite{Levin1998,Alexa2003}:
+\begin{equation}
+D(p_i) = \frac{k}{\frac{4}{3}\pi r_k^3}
+\label{eq:knn_density}
+\end{equation}
+
+% For Equation (21) - Centroid distance feature:
+Centroid distance feature~\cite{Lalonde2005}:
+\begin{equation}
+G(p_i) = \frac{|\mathbf{p}_i - \mathbf{c}|}{\max_j |\mathbf{p}_j - \mathbf{c}|}
+\label{eq:centroid_distance_feature}
+\end{equation}
+
+% For Equation (22) - Normal magnitude:
+Normal magnitude feature~\cite{Hoppe1992}:
+\begin{equation}
+N(p_i) = |\mathbf{n}_i|
+\label{eq:normal_magnitude}
+\end{equation}
+
+% For Equation (23) - Final set:
+Mathematical formulation~\cite{Hu2021}:
+\begin{equation}
+S_{final} = S_{seed} \cup \bigcup_{p_s \in S_{seed}} N_k(p_s)
+\label{eq:final_set}
+\end{equation}
+
+% For Equation (24) - Feature scaling:
+Feature scaling follows standard normalization~\cite{Guyon2003}:
+\begin{equation}
+\mathbf{f}*{\text{scaled}} = \frac{\mathbf{f} - \mu*{\mathbf{f}}}{\sigma_{\mathbf{f}}}
+\label{eq:feature_scaling}
+\end{equation}
+
+% For railway ballast specific applications, add:
+% \cite{Suhr2020Shape,Suhr2020Simple,Guo2020,Anochie2013,Paixao2018,Ferellec2010}
+
+% For surface reconstruction methods, use:
+% \cite{Kazhdan2006,Kazhdan2013,Bernardini1999}
+
+% Section 5: Parameters and Morphology Analysis
+
+% For Equation (25) - Elongation Index:
+The Elongation Index (EI) is defined as~\cite{Zhang2020}:
+\begin{equation}
+{EI} = \frac{d_S}{d_I}
+\label{eq:elongation}
+\end{equation}
+
+% For Equation (26) - Flatness Index:
+The Flatness Index (FI) is calculated as~\cite{Clayton2009}:
+\begin{equation}
+{FI} = \frac{d_I}{d_L}
+\label{eq:flatness}
+\end{equation}
+
+% For Equation (27) - Aspect Ratio:
+The Aspect Ratio is given by~\cite{Cho2006}:
+\begin{equation}
+{\text{Aspect Ratio}} = \frac{d_S}{d_L}
+\label{eq:aspectratio}
+\end{equation}
+
+% For Equation (28) - Convexity Index:
+The convexity index (CI) is defined as~\cite{Cox2008}:
+\begin{equation}
+{CI} = \frac{V_{P}}{V_{C}}
+\label{eq:convexity}
+\end{equation}
+
+% For Equation (29) - Circularity:
+The circularity (CR) is computed as~\cite{Cox1927}:
+\begin{equation}
+{CR} = \frac{A_{P}}{A_E}
+\label{eq:circularity}
+\end{equation}
+
+% For Equation (30) - Wadell’s sphericity:
+Wadell’s sphericity is defined as~\cite{Wadell1935}:
+\begin{equation}
+{\Psi_{Wadell}} = \frac{S_E}{S_P}
+\label{eq:sphericity_wadell}
+\end{equation}
+
+% For Equation (31) - Elliptical volume sphericity:
+The elliptical volume sphericity is calculated as~\cite{Masad2005,Krumbein1941}:
+\begin{equation}
+{\Psi_{ellip}} = \sqrt[3]{\frac{d_S \times d_I}{d_L^2}}
+\label{eq:sphericity_AIMS}
+\end{equation}
+
+% For Equation (32) - Roughness:
+Roughness is defined as~\cite{Kuo2000}:
+\begin{equation}
+{Roughness} = \frac{S_P}{S_C} - 1
+\label{eq:roughness}
+\end{equation}
+
+% For Equation (33) - Ratio-based angularity index:
+The ratio-based angularity index is given by~\cite{Kuo2000}:
+\begin{equation}
+{AI_{ratio}} = \frac{S_{E,ellip}}{S_C}
+\label{eq:AI_ratio}
+\end{equation}
+
+% For Equation (34) - Mean deviation-based angularity index:
+The mean deviation-based angularity index is computed as~\cite{Masad2000}:
+\begin{equation}
+{AI_{dev}} = \frac{1}{N}\sum_{i=1}^{N} \frac{|R_i - R_{\text{EE},i}|}{R_{\text{EE},i}}
+\label{eq:AI_masad}
+\end{equation}
